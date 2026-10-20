@@ -30,17 +30,15 @@ services:
       retries: 5
       start_period: 10s
     # ── Resource limits (DoS mitigation) ──────────────────
-    # `cpus`/`mem_limit`/`pids_limit` apply with plain `docker compose up`.
-    # The `deploy.resources` block is honored by Swarm and newer Compose.
-    cpus: "1.0"
-    mem_limit: 768m
-    memswap_limit: 768m   # no extra swap beyond mem_limit
-    pids_limit: 256
+    # Single style only: define all limits under deploy.resources. Mixing these
+    # with top-level cpus/mem_limit/pids_limit is rejected by newer Compose.
+    # `docker compose up` (Compose v2) honors deploy.resources.limits.
     deploy:
       resources:
         limits:
           cpus: "1.0"
           memory: 768m
+          pids: 256
         reservations:
           cpus: "0.25"
           memory: 128m
@@ -65,15 +63,12 @@ services:
     restart: unless-stopped
     init: true
     # ── Resource limits ───────────────────────────────────
-    cpus: "0.5"
-    mem_limit: 128m
-    memswap_limit: 128m
-    pids_limit: 128
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: 128m
+          pids: 128
     # ── Hardening ─────────────────────────────────────────
     security_opt:
       - no-new-privileges:true

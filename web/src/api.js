@@ -1,4 +1,11 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
+// Resolve the API base URL:
+//  - undefined (no .env in local dev) -> default to the dev server on :4000
+//  - "" (set empty in the Docker build) -> use relative /api, proxied by nginx
+//  - any value -> use it as-is
+const API_BASE =
+  import.meta.env.VITE_API_BASE === undefined
+    ? "http://localhost:4000"
+    : import.meta.env.VITE_API_BASE;
 
 /**
  * Posts a FormData payload to the given PDF endpoint and returns the resulting

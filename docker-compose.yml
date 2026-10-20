@@ -1,0 +1,83 @@
+services:
+  server:
+    build: ./server
+    environment:
+      PORT: "4000"
+      # The browser talks to /api on the SAME origin it loaded the page from
+      # (nginx proxies /api → server), so these requests are same-origin and
+      # CORS headers are not exercised on the normal path. This list only
+      # matters for direct cross-origin API calls; add the VM's URL if needed,
+      # e.g. "http://pdf-tools.internal:8080".
+      CORS_ORIGIN: "http://localhost,http://localhost:8080"
+      MAX_FILE_MB: "50"
+      MAX_FILES: "20"
+      # The nginx "web" container is exactly one trusted hop in front of the
+      # API, so rate limiting keys on the real client IP from X-Forwarded-For.
+      TRUST_PROXY: "1"
+      # read_only root FS: ensure temp files land on the writable tmpfs mount.
+      TMPDIR: "/tmp"
+    restart: unless-stopped
+    # Reap zombie Ghostscript child processes and forward signals cleanly.
+    init: true
+    expose:
+      - "4000"
+    # Health check uses Node (always present in the image) — the slim image has
+    # no curl/wget. Marks the container healthy once /health responds 200.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r=>{process.exitCode=r.ok?0:1}).catch(()=>{process.exitCode=1})"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # ── Resource limits (DoS mitigation) ──────────────────
+    # `cpus`/`mem_limit`/`pids_limit` apply with plain `docker compose up`.
+    # The `deploy.resources` block is honored by Swarm and newer Compose.
+    cpus: "1.0"
+    mem_limit: 768m
+    memswap_limit: 768m   # no extra swap beyond mem_limit
+    pids_limit: 256
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768m
+        reservations:
+          cpus: "0.25"
+          memory: 128m
+    # ── Hardening ─────────────────────────────────────────
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    # Ghostscript writes temp files; give it a size-capped in-memory tmpfs
+    # instead of a writable container filesystem.
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+
+  web:
+    build: ./web
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    init: true
+    # ── Resource limits ───────────────────────────────────
+    cpus: "0.5"
+    mem_limit: 128m
+    memswap_limit: 128m
+    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m
+    # ── Hardening ─────────────────────────────────────────
+    security_opt:
+      - no-new-privileges:true
+    # nginx needs to write its pid/cache; keep writable areas on tmpfs.
+    tmpfs:
+      - /var/cache/nginx:size=32m
+      - /var/run:size=8m

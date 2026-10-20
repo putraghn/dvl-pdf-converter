@@ -1,0 +1,22 @@
+# Normalize line endings. Files are checked out with LF so shell scripts,
+# Dockerfiles, and config consumed inside Linux containers never break due to
+# CRLF introduced on Windows.
+* text=auto eol=lf
+
+# Explicitly keep these as LF (critical for Linux containers).
+*.sh      text eol=lf
+*.js      text eol=lf
+*.mjs     text eol=lf
+*.json    text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.conf    text eol=lf
+Dockerfile text eol=lf
+.env*     text eol=lf
+
+# Treat these as binary (never touch line endings).
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary

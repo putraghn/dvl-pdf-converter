@@ -368,4 +368,67 @@ router.post("/from-images", uploadImages.array("files"), async (req, res, next) 
   }
 });
 
+// ── POST /api/pdf/protect ──────────────────────────────
+// Encrypts a PDF with a user password (required to OPEN the document) using
+// Ghostscript with AES-128 (R=4). Body field "password".
+//
+// Security notes:
+//  - The password is read from the form body (never the URL/query), so it is
+//    not captured by the morgan request logger.
+//  - It is passed to Ghostscript via process arguments. In this isolated
+//    single-tenant container that is acceptable; on a shared host, process
+//    args can be visible via `ps`.
+//  - The input/output PDFs live in a temp dir that is always removed.
+function protectArgs(inputPath, outputPath, password) {
+  return [
+    "-sDEVICE=pdfwrite",
+    "-dCompatibilityLevel=1.4",
+    // Ghostscript's pdfwrite supports encryption revisions 2 and 3 only.
+    // Use R=3 with a 128-bit key (the strongest pdfwrite offers). Owner
+    // password equals the user password so the document opens only with it.
+    "-dEncryptionR=3",
+    "-dKeyLength=128",
+    "-dPermissions=-1",
+    `-sUserPassword=${password}`,
+    `-sOwnerPassword=${password}`,
+    "-dNOPAUSE",
+    "-dQUIET",
+    "-dBATCH",
+    "-dSAFER",
+    `-sOutputFile=${outputPath}`,
+    inputPath,
+  ];
+}
+
+router.post("/protect", upload.single("file"), async (req, res, next) => {
+  let dir;
+  try {
+    if (!req.file) return res.status(400).json({ error: "Upload a PDF file." });
+    assertPdf(req.file.buffer, req.file.originalname);
+
+    const password = req.body.password;
+    if (typeof password !== "string" || password.length === 0) {
+      return res.status(400).json({ error: "A password is required." });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ error: "Password is too long (max 128 characters)." });
+    }
+
+    dir = await mkdtemp(path.join(tmpdir(), "pdfc-"));
+    const inputPath = path.join(dir, `${randomUUID()}.pdf`);
+    const outputPath = path.join(dir, `${randomUUID()}.pdf`);
+    await writeFile(inputPath, req.file.buffer);
+
+    await runGhostscript(protectArgs(inputPath, outputPath, password));
+    const bytes = await readFile(outputPath);
+
+    const base = req.file.originalname.replace(/\.pdf$/i, "");
+    sendPdf(res, bytes, `${base}-protected.pdf`);
+  } catch (err) {
+    next(err);
+  } finally {
+    if (dir) rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+});
+
 export default router;

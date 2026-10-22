@@ -4,6 +4,7 @@ import SplitPanel from "./components/SplitPanel.jsx";
 import CompressPanel from "./components/CompressPanel.jsx";
 import ToImagesPanel from "./components/ToImagesPanel.jsx";
 import FromImagesPanel from "./components/FromImagesPanel.jsx";
+import ProtectPanel from "./components/ProtectPanel.jsx";
 
 const TABS = [
   {
@@ -35,6 +36,12 @@ const TABS = [
     label: "Gambar → PDF",
     icon: "M9 3h6l1 2h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h3l1-2zm3 5a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
     Panel: FromImagesPanel,
+  },
+  {
+    id: "protect",
+    label: "Proteksi",
+    icon: "M12 2a5 5 0 0 0-5 5v3H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 0 1 6 0v3H9z",
+    Panel: ProtectPanel,
   },
 ];
 

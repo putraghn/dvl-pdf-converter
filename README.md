@@ -7,6 +7,7 @@ Website internal untuk mengelola file PDF:
 - **Kompres (compress)** — perkecil ukuran via Ghostscript
 - **PDF → JPG** — ubah tiap halaman jadi gambar (banyak halaman dikemas ZIP)
 - **Gambar → PDF** — gabung JPG/PNG jadi satu PDF
+- **Proteksi (protect)** — tambah password agar PDF hanya bisa dibuka dengan password
 
 Tanpa login — ditujukan untuk pemakaian di jaringan internal perusahaan. File diproses di server dan tidak disimpan permanen.
 
@@ -18,7 +19,7 @@ Browser (React + Vite + Tailwind)
    ▼
 nginx (web)  ──proxy /api──►  Express API (server)
                                  ├─ pdf-lib        → merge, split, gambar→PDF
-                                 ├─ Ghostscript    → compress, PDF→JPG
+                                 ├─ Ghostscript    → compress, PDF→JPG, proteksi password
                                  └─ archiver       → ZIP untuk PDF→JPG multi-halaman
 ```
 
@@ -139,6 +140,7 @@ Web berjalan di http://localhost:5173 (memanggil API di `VITE_API_BASE`).
 | POST   | `/api/pdf/compress`   | `file` (PDF), `level` screen/ebook/printer  | Kompres via Ghostscript                          |
 | POST   | `/api/pdf/to-images`  | `file` (PDF), `dpi` 72–300 (default 150)    | Tiap halaman → JPG. 1 halaman = JPG, >1 = ZIP    |
 | POST   | `/api/pdf/from-images`| `files` (≥1 JPG/PNG)                        | Gabung gambar jadi satu PDF (1 gambar/halaman)   |
+| POST   | `/api/pdf/protect`    | `file` (PDF), `password`                    | Tambah user password (enkripsi via Ghostscript)  |
 | GET    | `/health`             | —                                           | Health check                                     |
 
 Respons saat sukses:

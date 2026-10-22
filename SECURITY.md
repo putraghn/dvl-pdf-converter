@@ -85,8 +85,11 @@ Endpoint publik (semua di balik rate limiter):
 | POST   | `/api/pdf/compress`     | 1 PDF + `level` (enum)                  |
 | POST   | `/api/pdf/to-images`    | 1 PDF + `dpi` (angka)                   |
 | POST   | `/api/pdf/from-images`  | ≥1 gambar JPG/PNG                       |
+| POST   | `/api/pdf/protect`      | 1 PDF + `password` (string)             |
 
 Titik paling sensitif = pemrosesan Ghostscript (parser dokumen native). Dimitigasi dengan `-dSAFER`, pemanggilan tanpa shell, dan isolasi container.
+
+**Penanganan password (endpoint `/protect`):** password diterima via body form (bukan URL/query) sehingga tidak tercatat di log `morgan`. Password tidak ditulis ke disk dan hanya ada di memori proses selama operasi. Password diteruskan ke Ghostscript sebagai argumen proses — pada container single-tenant terisolasi ini dapat diterima; pada host bersama, argumen proses dapat terlihat via `ps`. Enkripsi memakai revisi 3 / kunci 128-bit (batas maksimum yang didukung `pdfwrite` Ghostscript — AES/R=4 tidak didukung untuk output).
 
 ---
 

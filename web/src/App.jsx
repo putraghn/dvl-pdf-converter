@@ -77,6 +77,15 @@ export default function App() {
           </div>
         </div>
         <div className="text-center">
+          <img
+            src="/dvl-logo.png"
+            alt="Darya-Varia Laboratoria"
+            className="mx-auto mb-5 h-16 w-auto max-w-[280px] object-contain"
+            onError={(e) => {
+              // Hide gracefully if the logo file hasn't been added yet.
+              e.currentTarget.style.display = "none";
+            }}
+          />
           <h1 className="text-3xl font-bold text-slate-800">
             {t("app.title")} <span className="text-brand-600">{t("app.titleAccent")}</span>
           </h1>
@@ -107,8 +116,9 @@ export default function App() {
         <ActivePanel />
       </main>
 
-      <footer className="mt-8 text-center text-xs text-slate-400">
-        {t("app.footer")}
+      <footer className="mt-8 space-y-1 text-center text-xs text-slate-400">
+        <p>{t("app.footer")}</p>
+        <p>&copy; Darya-Varia 2026</p>
       </footer>
     </div>
   );

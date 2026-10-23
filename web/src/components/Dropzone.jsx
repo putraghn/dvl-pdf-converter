@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { isPdf, isImage } from "../utils.js";
+import { useT } from "../i18n.jsx";
 
 /**
  * A drag-and-drop file picker.
@@ -9,6 +10,7 @@ import { isPdf, isImage } from "../utils.js";
  *  - onFiles: (File[]) => void  called with newly accepted files
  */
 export default function Dropzone({ multiple = false, kind = "pdf", onFiles }) {
+  const { t } = useT();
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
 
@@ -17,14 +19,12 @@ export default function Dropzone({ multiple = false, kind = "pdf", onFiles }) {
   const acceptAttr = isImageKind ? "image/jpeg,image/png,.jpg,.jpeg,.png" : "application/pdf,.pdf";
   const hint = isImageKind
     ? multiple
-      ? "Bisa pilih beberapa gambar (JPG / PNG)"
-      : "Satu gambar (JPG / PNG)"
+      ? t("dropzone.image.multi")
+      : t("dropzone.image.single")
     : multiple
-      ? "Bisa pilih beberapa file"
-      : "Satu file PDF";
-  const prompt = isImageKind
-    ? "Tarik & letakkan gambar di sini, atau klik untuk memilih"
-    : "Tarik & letakkan PDF di sini, atau klik untuk memilih";
+      ? t("dropzone.pdf.multi")
+      : t("dropzone.pdf.single");
+  const prompt = isImageKind ? t("dropzone.image.prompt") : t("dropzone.pdf.prompt");
 
   function accept(fileList) {
     const files = Array.from(fileList).filter(matcher);

@@ -4,14 +4,16 @@ import FileChip from "./FileChip.jsx";
 import StatusBar from "./StatusBar.jsx";
 import { postPdf, downloadBlob } from "../api.js";
 import { formatBytes } from "../utils.js";
+import { useT } from "../i18n.jsx";
 
 const LEVELS = [
-  { id: "screen", label: "Maksimal", desc: "Ukuran terkecil, kualitas paling rendah (72 dpi)" },
-  { id: "ebook", label: "Seimbang", desc: "Rekomendasi untuk dokumen umum (150 dpi)" },
-  { id: "printer", label: "Ringan", desc: "Kualitas tinggi, kompresi lebih sedikit (300 dpi)" },
+  { id: "screen", labelKey: "compress.level.screen", descKey: "compress.level.screen.desc" },
+  { id: "ebook", labelKey: "compress.level.ebook", descKey: "compress.level.ebook.desc" },
+  { id: "printer", labelKey: "compress.level.printer", descKey: "compress.level.printer.desc" },
 ];
 
 export default function CompressPanel() {
+  const { t } = useT();
   const [file, setFile] = useState(null);
   const [level, setLevel] = useState("ebook");
   const [busy, setBusy] = useState(false);
@@ -26,7 +28,7 @@ export default function CompressPanel() {
 
   async function handleCompress() {
     if (!file) {
-      setError("Pilih satu file PDF.");
+      setError(t("compress.pickOne"));
       return;
     }
     setBusy(true);
@@ -42,10 +44,14 @@ export default function CompressPanel() {
         const saved = Math.max(0, originalSize - compressedSize);
         const pct = originalSize ? Math.round((saved / originalSize) * 100) : 0;
         setSuccess(
-          `Selesai: ${formatBytes(originalSize)} → ${formatBytes(compressedSize)} (hemat ${pct}%). File terunduh.`
+          t("compress.success", {
+            from: formatBytes(originalSize),
+            to: formatBytes(compressedSize),
+            pct,
+          })
         );
       } else {
-        setSuccess("PDF berhasil dikompres. File terunduh.");
+        setSuccess(t("compress.successPlain"));
       }
     } catch (err) {
       setError(err.message);
@@ -56,9 +62,7 @@ export default function CompressPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-500">
-        Perkecil ukuran file PDF. Pilih tingkat kompresi sesuai kebutuhan.
-      </p>
+      <p className="text-sm text-slate-500">{t("compress.desc")}</p>
       <Dropzone onFiles={setOne} />
 
       {file && (
@@ -77,8 +81,8 @@ export default function CompressPanel() {
                 : "border-slate-200 bg-white hover:border-brand-300"
             }`}
           >
-            <p className="text-sm font-semibold text-slate-700">{opt.label}</p>
-            <p className="mt-1 text-xs text-slate-400">{opt.desc}</p>
+            <p className="text-sm font-semibold text-slate-700">{t(opt.labelKey)}</p>
+            <p className="mt-1 text-xs text-slate-400">{t(opt.descKey)}</p>
           </button>
         ))}
       </div>
@@ -90,7 +94,7 @@ export default function CompressPanel() {
         disabled={busy || !file}
         className="w-full rounded-lg bg-brand-600 px-4 py-3 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Kompres PDF
+        {t("compress.button")}
       </button>
     </div>
   );

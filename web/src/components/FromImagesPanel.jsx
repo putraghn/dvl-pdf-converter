@@ -3,8 +3,10 @@ import Dropzone from "./Dropzone.jsx";
 import FileChip from "./FileChip.jsx";
 import StatusBar from "./StatusBar.jsx";
 import { postPdf, downloadBlob } from "../api.js";
+import { useT } from "../i18n.jsx";
 
 export default function FromImagesPanel() {
+  const { t } = useT();
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -27,7 +29,7 @@ export default function FromImagesPanel() {
 
   async function handleConvert() {
     if (files.length === 0) {
-      setError("Pilih minimal satu gambar (JPG / PNG).");
+      setError(t("fromImages.needOne"));
       return;
     }
     setBusy(true);
@@ -38,7 +40,7 @@ export default function FromImagesPanel() {
       files.forEach((f) => fd.append("files", f));
       const { blob, filename } = await postPdf("from-images", fd);
       downloadBlob(blob, filename);
-      setSuccess(`Berhasil membuat PDF dari ${files.length} gambar. File terunduh.`);
+      setSuccess(t("fromImages.success", { count: files.length }));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -48,9 +50,7 @@ export default function FromImagesPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-500">
-        Gabungkan beberapa gambar JPG/PNG menjadi satu PDF, satu gambar per halaman. Urutan dapat diatur.
-      </p>
+      <p className="text-sm text-slate-500">{t("fromImages.desc")}</p>
       <Dropzone multiple kind="image" onFiles={addFiles} />
 
       {files.length > 0 && (
@@ -77,7 +77,7 @@ export default function FromImagesPanel() {
         disabled={busy || files.length === 0}
         className="w-full rounded-lg bg-brand-600 px-4 py-3 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Buat PDF dari Gambar
+        {t("fromImages.button")}
       </button>
     </div>
   );

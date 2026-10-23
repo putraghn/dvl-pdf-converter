@@ -1,11 +1,13 @@
 import React from "react";
+import { useT } from "../i18n.jsx";
 
 export default function StatusBar({ busy, error, success }) {
+  const { t } = useT();
   if (busy) {
     return (
       <div className="flex items-center gap-2 rounded-lg bg-brand-50 px-4 py-3 text-sm text-brand-700">
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-300 border-t-brand-600" />
-        Memproses...
+        {t("common.processing")}
       </div>
     );
   }

@@ -1,7 +1,9 @@
 import React from "react";
 import { formatBytes } from "../utils.js";
+import { useT } from "../i18n.jsx";
 
 export default function FileChip({ file, index, onRemove, onMoveUp, onMoveDown, canReorder, kind = "pdf" }) {
+  const { t } = useT();
   return (
     <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
       {kind === "image" ? (
@@ -23,7 +25,7 @@ export default function FileChip({ file, index, onRemove, onMoveUp, onMoveDown, 
             type="button"
             onClick={() => onMoveUp(index)}
             className="px-1 text-slate-400 hover:text-brand-600 disabled:opacity-30"
-            title="Naikkan"
+            title={t("common.moveUp")}
           >
             ▲
           </button>
@@ -31,7 +33,7 @@ export default function FileChip({ file, index, onRemove, onMoveUp, onMoveDown, 
             type="button"
             onClick={() => onMoveDown(index)}
             className="px-1 text-slate-400 hover:text-brand-600 disabled:opacity-30"
-            title="Turunkan"
+            title={t("common.moveDown")}
           >
             ▼
           </button>
@@ -41,7 +43,7 @@ export default function FileChip({ file, index, onRemove, onMoveUp, onMoveDown, 
         type="button"
         onClick={() => onRemove(index)}
         className="rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-        title="Hapus"
+        title={t("common.remove")}
       >
         ✕
       </button>

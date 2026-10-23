@@ -3,8 +3,10 @@ import Dropzone from "./Dropzone.jsx";
 import FileChip from "./FileChip.jsx";
 import StatusBar from "./StatusBar.jsx";
 import { postPdf, downloadBlob } from "../api.js";
+import { useT } from "../i18n.jsx";
 
 export default function SplitPanel() {
+  const { t } = useT();
   const [file, setFile] = useState(null);
   const [ranges, setRanges] = useState("");
   const [busy, setBusy] = useState(false);
@@ -19,11 +21,11 @@ export default function SplitPanel() {
 
   async function handleSplit() {
     if (!file) {
-      setError("Pilih satu file PDF.");
+      setError(t("split.pickOne"));
       return;
     }
     if (!ranges.trim()) {
-      setError("Masukkan halaman yang ingin diambil, mis. 1-3,5");
+      setError(t("split.enterPages"));
       return;
     }
     setBusy(true);
@@ -35,7 +37,7 @@ export default function SplitPanel() {
       fd.append("ranges", ranges.trim());
       const { blob, filename } = await postPdf("split", fd);
       downloadBlob(blob, filename);
-      setSuccess("Halaman berhasil diekstrak. File terunduh.");
+      setSuccess(t("split.success"));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -45,9 +47,7 @@ export default function SplitPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-500">
-        Ambil halaman tertentu dari sebuah PDF menjadi file baru.
-      </p>
+      <p className="text-sm text-slate-500">{t("split.desc")}</p>
       <Dropzone onFiles={setOne} />
 
       {file && (
@@ -56,7 +56,7 @@ export default function SplitPanel() {
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">
-          Halaman yang diambil
+          {t("split.label")}
         </label>
         <input
           type="text"
@@ -65,9 +65,7 @@ export default function SplitPanel() {
           placeholder="contoh: 1-3,5,8-10"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
         />
-        <p className="mt-1 text-xs text-slate-400">
-          Gunakan tanda hubung untuk rentang dan koma untuk memisah. Contoh: 1-3,5
-        </p>
+        <p className="mt-1 text-xs text-slate-400">{t("split.hint")}</p>
       </div>
 
       <StatusBar busy={busy} error={error} success={success} />
@@ -77,7 +75,7 @@ export default function SplitPanel() {
         disabled={busy || !file}
         className="w-full rounded-lg bg-brand-600 px-4 py-3 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Ekstrak Halaman
+        {t("split.button")}
       </button>
     </div>
   );

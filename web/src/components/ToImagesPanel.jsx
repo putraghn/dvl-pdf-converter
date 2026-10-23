@@ -3,14 +3,16 @@ import Dropzone from "./Dropzone.jsx";
 import FileChip from "./FileChip.jsx";
 import StatusBar from "./StatusBar.jsx";
 import { postPdf, downloadBlob } from "../api.js";
+import { useT } from "../i18n.jsx";
 
 const QUALITY = [
-  { dpi: 96, label: "Layar", desc: "Cepat & kecil (96 dpi)" },
-  { dpi: 150, label: "Standar", desc: "Rekomendasi (150 dpi)" },
-  { dpi: 300, label: "Cetak", desc: "Resolusi tinggi (300 dpi)" },
+  { dpi: 96, labelKey: "toImages.q.screen", descKey: "toImages.q.screen.desc" },
+  { dpi: 150, labelKey: "toImages.q.standard", descKey: "toImages.q.standard.desc" },
+  { dpi: 300, labelKey: "toImages.q.print", descKey: "toImages.q.print.desc" },
 ];
 
 export default function ToImagesPanel() {
+  const { t } = useT();
   const [file, setFile] = useState(null);
   const [dpi, setDpi] = useState(150);
   const [busy, setBusy] = useState(false);
@@ -25,7 +27,7 @@ export default function ToImagesPanel() {
 
   async function handleConvert() {
     if (!file) {
-      setError("Pilih satu file PDF.");
+      setError(t("toImages.pickOne"));
       return;
     }
     setBusy(true);
@@ -38,11 +40,7 @@ export default function ToImagesPanel() {
       const { blob, filename } = await postPdf("to-images", fd);
       downloadBlob(blob, filename);
       const isZip = filename.toLowerCase().endsWith(".zip");
-      setSuccess(
-        isZip
-          ? "Setiap halaman diubah jadi JPG dan dikemas dalam ZIP. File terunduh."
-          : "PDF diubah menjadi JPG. File terunduh."
-      );
+      setSuccess(isZip ? t("toImages.successZip") : t("toImages.successJpg"));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -52,9 +50,7 @@ export default function ToImagesPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-500">
-        Ubah tiap halaman PDF menjadi gambar JPG. Jika lebih dari satu halaman, hasilnya berupa file ZIP.
-      </p>
+      <p className="text-sm text-slate-500">{t("toImages.desc")}</p>
       <Dropzone onFiles={setOne} />
 
       {file && (
@@ -73,8 +69,8 @@ export default function ToImagesPanel() {
                 : "border-slate-200 bg-white hover:border-brand-300"
             }`}
           >
-            <p className="text-sm font-semibold text-slate-700">{opt.label}</p>
-            <p className="mt-1 text-xs text-slate-400">{opt.desc}</p>
+            <p className="text-sm font-semibold text-slate-700">{t(opt.labelKey)}</p>
+            <p className="mt-1 text-xs text-slate-400">{t(opt.descKey)}</p>
           </button>
         ))}
       </div>
@@ -86,7 +82,7 @@ export default function ToImagesPanel() {
         disabled={busy || !file}
         className="w-full rounded-lg bg-brand-600 px-4 py-3 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Ubah ke JPG
+        {t("toImages.button")}
       </button>
     </div>
   );

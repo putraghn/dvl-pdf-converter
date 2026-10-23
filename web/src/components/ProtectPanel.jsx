@@ -3,8 +3,10 @@ import Dropzone from "./Dropzone.jsx";
 import FileChip from "./FileChip.jsx";
 import StatusBar from "./StatusBar.jsx";
 import { postPdf, downloadBlob } from "../api.js";
+import { useT } from "../i18n.jsx";
 
 export default function ProtectPanel() {
+  const { t } = useT();
   const [file, setFile] = useState(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -21,15 +23,15 @@ export default function ProtectPanel() {
 
   async function handleProtect() {
     if (!file) {
-      setError("Pilih satu file PDF.");
+      setError(t("protect.pickOne"));
       return;
     }
     if (!password) {
-      setError("Masukkan password.");
+      setError(t("protect.enterPassword"));
       return;
     }
     if (password !== confirm) {
-      setError("Password dan konfirmasi tidak sama.");
+      setError(t("protect.mismatch"));
       return;
     }
     setBusy(true);
@@ -41,7 +43,7 @@ export default function ProtectPanel() {
       fd.append("password", password);
       const { blob, filename } = await postPdf("protect", fd);
       downloadBlob(blob, filename);
-      setSuccess("PDF berhasil diproteksi. File terunduh. Dokumen kini meminta password saat dibuka.");
+      setSuccess(t("protect.success"));
       setPassword("");
       setConfirm("");
     } catch (err) {
@@ -53,9 +55,7 @@ export default function ProtectPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-500">
-        Tambahkan password pada PDF. Dokumen hanya bisa dibuka dengan password yang kamu tentukan.
-      </p>
+      <p className="text-sm text-slate-500">{t("protect.desc")}</p>
       <Dropzone onFiles={setOne} />
 
       {file && (
@@ -64,24 +64,24 @@ export default function ProtectPanel() {
 
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">{t("protect.password")}</label>
           <input
             type={show ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
-            placeholder="Masukkan password"
+            placeholder={t("protect.passwordPlaceholder")}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Konfirmasi password</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">{t("protect.confirm")}</label>
           <input
             type={show ? "text" : "password"}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             autoComplete="new-password"
-            placeholder="Ketik ulang password"
+            placeholder={t("protect.confirmPlaceholder")}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </div>
@@ -92,7 +92,7 @@ export default function ProtectPanel() {
             onChange={(e) => setShow(e.target.checked)}
             className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
           />
-          Tampilkan password
+          {t("protect.show")}
         </label>
       </div>
 
@@ -103,7 +103,7 @@ export default function ProtectPanel() {
         disabled={busy || !file}
         className="w-full rounded-lg bg-brand-600 px-4 py-3 font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Proteksi PDF
+        {t("protect.button")}
       </button>
     </div>
   );

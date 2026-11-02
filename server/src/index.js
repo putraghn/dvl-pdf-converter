@@ -54,7 +54,13 @@ app.use((err, req, res, next) => {
     }
     return res.status(400).json({ error: err.message });
   }
-  const status = err.status || 500;
+  // Malformed multipart bodies (bad part headers, truncated form, missing
+  // boundary) are client errors raised by busboy as plain Errors; report 400.
+  const isMultipartError =
+    /^(Malformed part header|Unexpected end of form|Unexpected end of multipart data|Multipart: Boundary not found|Bad content-type header)/i.test(
+      err.message || ""
+    );
+  const status = err.status || (isMultipartError ? 400 : 500);
   if (status >= 500) console.error(err);
   res.status(status).json({ error: err.message || "Internal server error" });
 });

@@ -43,7 +43,7 @@ Lihat juga bagian "Privasi data" di `README.md`.
 
 | Area                     | Kontrol                                                                 |
 |--------------------------|-------------------------------------------------------------------------|
-| HTTP security headers    | `helmet()` (termasuk mematikan `X-Powered-By`)                          |
+| HTTP security headers    | Dua lapis. API: `helmet()` (termasuk mematikan `X-Powered-By`). Halaman web (HTML/JS/CSS): nginx menambahkan CSP ketat (`script-src 'self'`, `style-src 'self'`, `object-src 'none'`, `frame-ancestors 'self'`), HSTS, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, COOP/CORP, `Permissions-Policy`, dengan flag `always` agar berlaku juga pada respons error. `server_tokens off` menyembunyikan versi nginx. Header yang sama dari API disembunyikan di nginx (`proxy_hide_header`) agar tidak terkirim dua kali. CSP sengaja **tanpa** `upgrade-insecure-requests` karena akan merusak pemuatan aset pada deployment HTTP biasa |
 | CORS                     | Whitelist origin via `CORS_ORIGIN`; hanya method `GET`/`POST`           |
 | Rate limiting            | `express-rate-limit`: 60 request/menit per IP klien. IP di-resolve via `trust proxy` yang dikonfigurasi (`TRUST_PROXY`), bukan `true` yang mudah dipalsukan |
 | Batas ukuran upload      | `MAX_FILE_MB` (default 50 MB/file); nginx `client_max_body_size 60m`    |

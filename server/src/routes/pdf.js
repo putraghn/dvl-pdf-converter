@@ -67,11 +67,34 @@ async function loadPdf(buffer, label) {
  * percent-encoded via filename*. This prevents HTTP header injection.
  */
 function contentDisposition(filename) {
-  // Strip path separators and keep only the base name.
-  const base = String(filename).replace(/[/\\]/g, "_");
-  // ASCII fallback: drop control chars, quotes, backslashes.
-  const ascii = base.replace(/[\x00-\x1f\x7f"\\]/g, "_").slice(0, 200) || "download";
-  const encoded = encodeURIComponent(base);
+  let name = String(filename);
+
+  // multer/busboy decode `filename="..."` as Latin-1, but browsers send UTF-8
+  // bytes, so "été" arrives as "Ã©tÃ©". When every char fits in one byte and
+  // the bytes form valid UTF-8, undo that so names like "Laporan – Q1.pdf"
+  // survive the round trip instead of being garbled.
+  if (/[\x80-\xff]/.test(name) && /^[\x00-\xff]*$/.test(name)) {
+    const repaired = Buffer.from(name, "latin1").toString("utf8");
+    if (!repaired.includes("\uFFFD")) name = repaired;
+  }
+
+  // Lone surrogates make encodeURIComponent throw (-> 500); normalize them.
+  if (typeof name.toWellFormed === "function") name = name.toWellFormed();
+
+  // Strip path separators and all control characters (incl. CR/LF).
+  const base = name.replace(/[/\\]/g, "_").replace(/[\x00-\x1f\x7f]/g, "_");
+
+  // Plain `filename=` fallback must be printable ASCII only: Node rejects or
+  // truncates characters above 0xFF in header values, and raw high bytes are
+  // not valid here. Quotes, backslashes and % are neutralized too.
+  const ascii = base.replace(/[^\x20-\x7e]|["\\%]/g, "_").slice(0, 200) || "download";
+
+  // RFC 5987 `filename*` carries the real name. encodeURIComponent leaves
+  // ' ( ) * unescaped, which are not attr-chars, so encode them as well.
+  const encoded = encodeURIComponent(base).replace(
+    /['()*]/g,
+    (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase()
+  );
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 

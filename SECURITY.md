@@ -2,7 +2,7 @@
 
 Dokumen ini untuk tim Information Security sebagai dasar security review / assessment aplikasi **PDF Tools Internal**. Berisi arsitektur, alur data, kontrol keamanan yang sudah diterapkan, batasan yang diketahui, dan checklist pengujian.
 
-> Ringkasan: aplikasi internal tanpa autentikasi untuk mengelola PDF (merge, split, compress, PDF→JPG, gambar→PDF). Tidak ada database, tidak ada penyimpanan permanen. Dimaksudkan **hanya untuk jaringan internal**.
+> Ringkasan: aplikasi internal untuk mengelola PDF (merge, split, compress, PDF→JPG, gambar→PDF, proteksi password). Isi file tidak pernah disimpan. Dimaksudkan **hanya untuk jaringan internal**. Ada dua cara menjalankannya: **(a) default, tanpa login** (`docker-compose.yml`), dan **(b) dengan SSO Microsoft Entra dan laporan aktivitas** (`docker-compose.sso.yml`, lihat §10). Mode (b) menutup batasan "tanpa autentikasi", tetapi menyimpan metadata aktivitas pengguna selama 45 hari.
 
 ---
 
@@ -29,7 +29,7 @@ nginx (container "web")  ──proxy /api/*──►  Express API (container "se
 
 ## 2. Alur & penanganan data
 
-- **Tidak ada database. Tidak ada folder upload persisten. Tidak ada penyimpanan jangka panjang.**
+- **Isi file tidak pernah disimpan.** Tidak ada folder upload persisten dan tidak ada penyimpanan jangka panjang atas dokumen. Pada mode default tidak ada database sama sekali. Pada mode SSO, satu-satunya yang disimpan adalah **log aktivitas** (metadata) di SQLite, lihat §10.
 - Merge / split / gambar→PDF: file diproses sebagai buffer **di memori** (`multer.memoryStorage()`), tidak pernah ditulis ke disk.
 - Compress / PDF→JPG: file ditulis ke **direktori temporer acak** (`mkdtemp`), diproses Ghostscript, lalu folder **dihapus di blok `finally`** (termasuk saat error) dan setelah ZIP selesai di-stream.
 - Nama file/folder sementara memakai `randomUUID()`.
@@ -99,7 +99,7 @@ Titik paling sensitif = pemrosesan Ghostscript (parser dokumen native). Dimitiga
 
 ## 6. Batasan & risiko yang diketahui (disclosure jujur)
 
-1. **Tidak ada autentikasi/otorisasi.** Siapa pun yang bisa menjangkau URL bisa memakai semua fitur. Mitigasi wajib: batasi akses di level jaringan (lihat §7).
+1. **Pada mode default tidak ada autentikasi/otorisasi.** Siapa pun yang bisa menjangkau URL bisa memakai semua fitur. Mitigasi: batasi akses di level jaringan (lihat §7), atau aktifkan **mode SSO Entra** (§10), yang mewajibkan login untuk semua halaman dan endpoint.
 2. **Ghostscript memproses dokumen tidak tepercaya — risiko residual tertinggi.** Parser dokumen ini secara historis berulang kali punya kerentanan, termasuk bypass sandbox `-dSAFER` (mis. CVE-2026-101258: dokumen PostScript/EPS buatan dapat mengeksekusi perintah shell meski `-dSAFER` aktif; Red Hat menyatakan belum ada mitigasi selain patch). Lapisan pertahanan yang diterapkan: (a) versi Ghostscript yang sudah diperbaiki (base image Debian trixie); (b) hanya file berheader `%PDF-` di byte 0 yang boleh sampai ke Ghostscript, sehingga interpreter PostScript tidak terjangkau lewat endpoint; (c) `-dSAFER`; (d) timeout dan batas konkurensi; (e) container non-root, `read_only`, `cap_drop: ALL`, `no-new-privileges`; (f) jaringan `internal` tanpa akses keluar. Risiko tidak bisa nol: kerentanan baru di parser PDF bisa muncul kapan saja, karena itu **rebuild image berkala dan pantau advisory Ghostscript/Debian** tetap wajib. Catatan: cek header hanya memastikan *jenis* file; tidak menjamin isi PDF aman bagi parser.
 3. **Potensi DoS lewat file besar/kompleks.** Dibatasi ukuran file, jumlah file, dan rate limit. Selain itu, `docker-compose.yml` kini menerapkan **resource limits** per container (server: 1 CPU / 768 MB / 256 PID; web: 0.5 CPU / 128 MB), `--no-new-privileges`, `cap_drop: ALL`, dan root filesystem `read_only` dengan tmpfs khusus untuk file temp. File PDF yang sangat kompleks tetap bisa memakan CPU dalam batas tersebut.
 4. **Rate limit per-IP.** `trust proxy` dapat dikonfigurasi via `TRUST_PROXY` (default: tidak percaya proxy; `docker compose` memakai `1` untuk nginx di depan). Penting: setel sesuai jumlah hop proxy nyata — nilai terlalu permisif (`true`) memungkinkan pemalsuan IP lewat `X-Forwarded-For` untuk melewati rate limit. nginx meneruskan IP klien via `X-Forwarded-For`.
@@ -112,7 +112,7 @@ Titik paling sensitif = pemrosesan Ghostscript (parser dokumen native). Dimitiga
 - [ ] Jalankan pada **host Linux** (mis. VM Ubuntu + Docker Engine). Image adalah Linux container — **bukan** Windows containers. Lihat panduan deploy di `README.md`.
 - [ ] Deploy **hanya** di jaringan internal / di balik VPN atau zero-trust proxy. Jangan ekspos ke internet.
 - [ ] Terminasi **TLS/HTTPS** di reverse proxy perusahaan di depan container `web`.
-- [ ] Jika butuh identitas pengguna, tambahkan autentikasi di reverse proxy (mis. SSO/Entra via proxy) — aplikasi sengaja tidak menanganinya.
+- [ ] Jika butuh identitas pengguna dan laporan aktivitas, gunakan **mode SSO Entra** (`docker-compose.sso.yml`, §10). Syaratnya nama host HTTPS dan App Registration di Entra.
 - [ ] Set `CORS_ORIGIN` ke origin produksi yang pasti (bukan wildcard).
 - [x] Terapkan **resource limits** (CPU/memory/PID) pada container — sudah di `docker-compose.yml`. Sesuaikan angkanya dengan kapasitas host bila perlu.
 - [x] Konfigurasi `trust proxy` via `TRUST_PROXY` agar rate limiting akurat — `docker compose` sudah set `1`. Sesuaikan jumlah hop bila topologi proxy berbeda (mis. ada LB tambahan di depan nginx).
@@ -251,3 +251,60 @@ docker inspect $(docker compose ps -q server) --format '{{.HostConfig.CapDrop}} 
 Menjalankan lokal: lihat `README.md`. Health check: `GET /health` → `{"status":"ok"}`.
 
 Semua pemrosesan terjadi di dalam jaringan/host sendiri; aplikasi tidak mengirim file atau metadata ke layanan pihak ketiga mana pun.
+
+---
+
+## 10. Mode SSO Microsoft Entra dan log aktivitas (opsional)
+
+Dijalankan dengan `docker-compose.yml` + `docker-compose.sso.yml`. Mode default (tanpa login) tidak berubah.
+
+### 10.1 Arsitektur dan alur
+
+```
+Browser ─HTTPS─► proxy TLS perusahaan ─► nginx ──auth_request──► oauth2-proxy ◄──► Microsoft Entra
+                                           │ (hanya jika sesi valid;
+                                           │  identitas dipasang oleh nginx)
+                                           ▼
+                                      API (jaringan Docker "internal", tanpa akses keluar, tanpa port publik)
+                                           └─► SQLite (log aktivitas, volume "audit-data")
+```
+
+| Kontrol | Penerapan |
+|---------|-----------|
+| Login wajib | Setiap request (halaman, aset statis, API) diperiksa nginx lewat `auth_request`. Tanpa sesi: halaman dialihkan ke login, API dijawab `401` JSON |
+| Protokol login | OIDC authorization code dengan PKCE (`S256`), `state`, dan verifikasi `nonce` (diaktifkan eksplisit karena bawaan oauth2-proxy melewatinya) |
+| Cookie sesi | `Secure`, `HttpOnly`, `SameSite=Lax`, prefiks `__Secure-`, berlaku 8 jam |
+| Siapa boleh login | Hanya akun di tenant Entra kita (issuer). Pembatasan lebih ketat lewat "Assignment required" di Enterprise Application (tanpa kode) |
+| Identitas ke API | Header `X-Authenticated-Email/-User` yang **selalu ditimpa nginx** dengan nilai terverifikasi; header kiriman klien dibuang. Bila oauth2-proxy tidak memberi email, API menolak (401) |
+| Header tidak bisa dipalsukan di mode default | Saat `AUTH_MODE` bukan `proxy`, API **mengabaikan** header identitas sama sekali; semua dicatat sebagai `anonymous` |
+| Isolasi | API hanya di jaringan `internal` dan tanpa port publik; hanya nginx yang bisa menjangkaunya. `oauth2-proxy` ada di jaringan terpisah yang punya akses keluar (dibutuhkan untuk ke Microsoft) |
+
+### 10.2 Log aktivitas
+
+- **Isi**: waktu (UTC), pengguna (email/UPN dan ID), aksi, hasil (sukses/gagal + kode HTTP), jumlah dan ukuran file, ukuran output, durasi, IP klien.
+- **Tidak disimpan**: isi file, **nama file**, password. Terbukti lewat pengujian yang memindai database dan berkas WAL mentah.
+- **Retensi**: 45 hari (`AUDIT_RETENTION_DAYS`). Baris yang lebih lama dihapus saat server mulai dan tiap 6 jam.
+- **Penyimpanan**: berkas SQLite di volume Docker `audit-data`; ini **satu-satunya data persisten** aplikasi.
+- **Akses laporan**: hanya pengguna yang ada di `REPORT_ADMINS`. Di mode tanpa login laporan selalu tertutup.
+- **Ekspor CSV**: sel yang diawali `=`, `+`, `-`, `@` dinetralkan agar tidak dieksekusi sebagai formula spreadsheet; dibatasi 50.000 baris.
+- **Kegagalan menulis log tidak menggagalkan operasi PDF** (fail-open).
+
+### 10.3 Batasan yang perlu diketahui InfoSec
+
+1. **Kepercayaan pada header identitas.** API percaya header dari nginx karena terisolasi jaringan. Jika container lain di jaringan `backend` dikompromikan, identitas bisa dipalsukan. Mitigasi: hanya `web` dan `server` yang ada di jaringan itu.
+2. **Log ini untuk laporan pemakaian, bukan bukti audit yang tahan manipulasi.** Admin VM dapat mengubah berkas SQLite, dan karena fail-open mungkin ada baris yang tidak tercatat. Untuk kebutuhan forensik/compliance, kirim ke SIEM.
+3. **Identitas = UPN** dari klaim `preferred_username`. UPN dapat berubah bila akun diganti nama; dengan retensi 45 hari dampaknya kecil.
+4. **Client secret Entra kedaluwarsa** (maksimum 24 bulan). Bila lewat, login berhenti. Catat tanggalnya dan perbarui sebelum itu.
+5. **Daftar `REPORT_ADMINS` dikelola manual** di berkas `.env.sso`.
+6. **Log berisi data pribadi karyawan** (UPN, IP, riwayat aktivitas). Informasikan ke pengguna dan sesuaikan dengan kebijakan internal.
+7. **Log tidak dicadangkan otomatis.** Data hanya 45 hari; cadangkan volume `audit-data` bila perlu.
+
+### 10.4 Status pengujian
+
+Diuji otomatis di lingkungan pengembangan (nginx 1.27.5, oauth2-proxy v7.15.5 asli, Edge headless, Node 24):
+
+- **Backend** (61 pemeriksaan): identitas wajib, header palsu diabaikan di mode default, akses laporan, isi log, filter, pagination, ekspor CSV, tidak ada nama file/password di database, retensi 45 hari, dan kegagalan tulis tidak melempar error.
+- **Rantai nginx → oauth2-proxy → API** (29 pemeriksaan): alihan login, `401` JSON untuk API, header identitas palsu ditimpa, dan atribusi aktivitas ke orang yang benar. Bagian "belum login" diuji dengan oauth2-proxy asli; bagian "sudah login" memakai **penyedia sesi tiruan** karena butuh akun Entra.
+- **Browser** (13 pemeriksaan): halaman tampil di bawah CSP ketat tanpa pelanggaran, tab Laporan hanya untuk admin, pergantian bahasa.
+
+**Belum diuji**: login sungguhan dengan tenant Entra (butuh App Registration dan nama host HTTPS), build dan jaringan `internal` di Docker, dan perilaku di belakang proxy TLS perusahaan. Lakukan uji penerimaan di VM sebelum dipakai (lihat README).

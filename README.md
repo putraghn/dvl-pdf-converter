@@ -9,7 +9,7 @@ Website internal untuk mengelola file PDF:
 - **Gambar → PDF** — gabung JPG/PNG jadi satu PDF
 - **Proteksi (protect)** — tambah password agar PDF hanya bisa dibuka dengan password
 
-Tanpa login — ditujukan untuk pemakaian di jaringan internal perusahaan. File diproses di server dan tidak disimpan permanen.
+Secara default tanpa login, untuk pemakaian di jaringan internal perusahaan. Opsional: **login SSO Microsoft Entra dan laporan aktivitas** (lihat bagian "Login SSO dan laporan aktivitas"). File diproses di server dan isinya tidak disimpan.
 
 ## Arsitektur
 
@@ -160,9 +160,66 @@ Lihat `server/.env.example` dan `web/.env.example`. Yang umum diubah:
 - `GS_MAX_CONCURRENT` — jumlah proses Ghostscript yang boleh berjalan bersamaan (default 2).
 - `GS_MAX_QUEUE` — jumlah permintaan yang boleh menunggu giliran (default 5). Permintaan di antrean menyimpan file unggahannya di memori, jadi jaga angkanya kecil dibanding RAM container. Kelebihannya dijawab 503.
 
+## Login SSO dan laporan aktivitas (opsional)
+
+Mode ini mewajibkan login dengan akun Microsoft Entra perusahaan dan mencatat **siapa melakukan apa** untuk laporan. Dipasang sebagai lapisan di atas deployment yang ada, jadi mode default tidak berubah.
+
+**Cara kerja**: nginx memeriksa setiap request lewat [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/). Belum login, pengguna dialihkan ke Microsoft. Setelah login, nginx meneruskan identitas terverifikasi ke API, yang mencatat aktivitas ke SQLite dan menyediakan tab **Laporan** untuk admin.
+
+### Syarat
+- **Nama host HTTPS** (mis. `pdf.namaperusahaan.co.id`). Entra hanya mengizinkan redirect URI `http://` untuk `localhost`, jadi `http://<IP-VM>:8080` tidak bisa dipakai untuk login. Sertifikat TLS biasanya dipasang di reverse proxy perusahaan di depan VM.
+- **Admin Entra** yang bisa membuat App Registration.
+
+### 1. Buat App Registration di Entra (dikerjakan admin tenant)
+1. *Microsoft Entra admin center, App registrations, New registration*. Nama bebas (mis. `PDF Tools`). *Supported account types*: **Accounts in this organizational directory only** (single tenant).
+2. *Redirect URI*: platform **Web**, nilai `https://<PUBLIC_HOST>/oauth2/callback`.
+3. Di *Overview* catat **Application (client) ID** dan **Directory (tenant) ID**.
+4. *Certificates & secrets, New client secret*. Salin **Value** (hanya tampil sekali) dan **catat tanggal kedaluwarsanya**.
+5. Izin API: cukup bawaan (`User.Read` delegated). Tidak perlu izin tambahan.
+6. Batasi siapa yang boleh masuk: *Enterprise applications*, pilih aplikasinya, *Properties*, **Assignment required = Yes**, lalu *Users and groups* untuk menambah pengguna atau grup yang diizinkan.
+
+### 2. Siapkan konfigurasi di VM
+```bash
+cp .env.sso.example .env.sso     # berkas ini sudah di-.gitignore, jangan di-commit
+openssl rand -base64 32 | tr -- '+/' '-_'   # hasilnya untuk OAUTH2_COOKIE_SECRET
+nano .env.sso                    # isi PUBLIC_HOST, ENTRA_*, OAUTH2_COOKIE_SECRET, REPORT_ADMINS
+```
+`REPORT_ADMINS` berisi sign-in name (UPN) yang boleh membuka tab Laporan, dipisah koma.
+
+### 3. Jalankan
+```bash
+docker compose --env-file .env.sso -f docker-compose.yml -f docker-compose.sso.yml up -d --build
+docker compose --env-file .env.sso -f docker-compose.yml -f docker-compose.sso.yml ps
+```
+
+### 4. Uji penerimaan (wajib sebelum dipakai)
+1. Buka `https://<PUBLIC_HOST>`: harus diarahkan ke halaman login Microsoft, lalu kembali ke aplikasi.
+2. Di kanan atas tampil "Masuk sebagai &lt;email&gt;".
+3. Lakukan satu operasi (mis. Kompres), lalu masuk sebagai akun di `REPORT_ADMINS`: tab **Laporan** harus menampilkan aktivitas tadi. Akun biasa tidak melihat tab itu.
+4. Sesi habis (8 jam): aksi berikutnya menampilkan pesan "Sesi berakhir", muat ulang untuk login lagi.
+
+### Log aktivitas
+- Yang dicatat: waktu, pengguna, aksi, hasil, jumlah/ukuran file, durasi, IP. **Tidak** isi file, nama file, atau password.
+- Disimpan **45 hari** lalu dihapus otomatis (`AUDIT_RETENTION_DAYS`), di volume Docker `audit-data`.
+- Laporan dapat difilter (tanggal, pengguna, aksi) dan diunduh sebagai CSV.
+
+### Perawatan
+- **Client secret kedaluwarsa**: perbarui di Entra dan `.env.sso`, lalu `docker compose ... up -d`. Bila lewat tanggalnya, login berhenti.
+- Ganti `OAUTH2_COOKIE_SECRET` akan membuat semua pengguna login ulang.
+- Image `oauth2-proxy` ikut dalam rutinitas pembaruan (versi dipin di `docker-compose.sso.yml`).
+- Jika `TRUST_PROXY` salah (jumlah proxy di depan API), laporan mencatat IP proxy, bukan IP pengguna.
+
+### Masalah umum
+| Gejala | Penyebab biasa |
+|--------|----------------|
+| Microsoft menampilkan `AADSTS50011` (redirect URI tidak cocok) | Redirect URI di Entra harus persis `https://<PUBLIC_HOST>/oauth2/callback` |
+| Berputar kembali ke halaman login | Cookie `Secure` tidak tersimpan karena situs diakses lewat `http://`; gunakan HTTPS |
+| `AADSTS50105` (pengguna tidak ditugaskan) | Pengguna belum ditambahkan di *Users and groups* pada Enterprise Application |
+| 502 dari nginx | Container `server` atau `oauth2-proxy` belum jalan; cek `docker compose ... logs` |
+
 ## Privasi data
 
-**File yang diunggah tidak disimpan permanen.** Tidak ada database, tidak ada folder upload persisten, dan tidak ada data dokumen yang ditulis ke storage jangka panjang. File hanya ada selama proses berlangsung lalu langsung dibuang.
+**Isi file yang diunggah tidak disimpan permanen.** Tidak ada folder upload persisten dan tidak ada data dokumen yang ditulis ke storage jangka panjang. File hanya ada selama proses berlangsung lalu langsung dibuang. Pada mode default tidak ada database. Pada mode SSO, yang disimpan hanyalah **log aktivitas** (metadata, 45 hari), seperti dijelaskan di atas.
 
 Cara penanganan tiap fitur:
 
@@ -187,4 +244,4 @@ Aplikasi mencatat **metadata request** saja melalui `morgan` (method, path, stat
 
 ## Catatan keamanan
 
-Tidak ada autentikasi. Deploy **hanya di jaringan internal** atau di balik reverse proxy / VPN perusahaan. Backend sudah memakai Helmet, CORS, dan rate limiting (60 req/menit per IP) sebagai pengaman dasar.
+Mode default tidak memakai autentikasi: deploy **hanya di jaringan internal** atau di balik reverse proxy / VPN perusahaan, atau gunakan mode SSO di atas. Backend sudah memakai Helmet, CORS, dan rate limiting (60 req/menit per IP) sebagai pengaman dasar. Detail lengkap ada di `SECURITY.md`.

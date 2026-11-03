@@ -30,6 +30,32 @@ export const config = {
   // hops; "true" => trust all (NOT recommended, spoofable). Other strings are
   // passed through to Express (e.g. a subnet like "10.0.0.0/8").
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+
+  // ── Authentication (Microsoft Entra SSO via oauth2-proxy + nginx) ───────
+  // "off"   (default): no login. Identity headers are IGNORED, so nobody can
+  //          forge them; every request is recorded as "anonymous".
+  // "proxy": nginx authenticates each request through oauth2-proxy and adds
+  //          X-Authenticated-User / X-Authenticated-Email. The API refuses
+  //          requests without them. Only use this when the API is reachable
+  //          exclusively through that nginx (docker-compose.sso.yml keeps it
+  //          on an internal-only Docker network).
+  authMode: process.env.AUTH_MODE === "proxy" ? "proxy" : "off",
+
+  // ── Activity log (who did what), used for reports ───────────────────────
+  // SQLite file; empty path = disabled. Only metadata is stored (user, action,
+  // result, sizes, duration, IP) - never file contents, file names or
+  // passwords. Rows older than the retention period are deleted.
+  auditDbPath: process.env.AUDIT_DB_PATH || "",
+  auditRetentionDays: Math.floor(positiveNumber(process.env.AUDIT_RETENTION_DAYS, 45)),
+
+  // Emails (comma-separated, case-insensitive) allowed to open the report.
+  reportAdmins: (process.env.REPORT_ADMINS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+
+  // Where the "sign out" link in the UI points (served by oauth2-proxy).
+  logoutUrl: process.env.SSO_LOGOUT_URL || "/oauth2/sign_out",
 };
 
 /** Parses a positive number from an env string; falls back to `fallback` if unset/invalid. */

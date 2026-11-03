@@ -17,6 +17,11 @@ RUN npm install --omit=dev
 
 COPY src ./src
 
+# Writable location for the activity log (SQLite). Docker initialises a new
+# named volume mounted here with this ownership, so the non-root user can write
+# even though the container's root filesystem is read-only.
+RUN mkdir -p /data && chown node:node /data
+
 ENV PORT=4000
 EXPOSE 4000
 

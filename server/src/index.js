@@ -5,7 +5,10 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
 import { config } from "./config.js";
+import { authenticate } from "./auth.js";
+import { auditRequests, initAudit } from "./audit.js";
 import pdfRouter from "./routes/pdf.js";
+import reportRouter from "./routes/report.js";
 
 const app = express();
 
@@ -25,23 +28,31 @@ app.use(
   })
 );
 
-const limiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 60, // 60 requests per minute per client IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Key on the IP Express resolved (honors "trust proxy"). Falling back to the
-  // socket address keeps limiting functional even if req.ip is unavailable.
-  keyGenerator: (req) => req.ip || req.socket?.remoteAddress || "unknown",
-  // Don't rate-limit the health check (used by Docker/LB probes).
-  skip: (req) => req.path === "/health",
-});
+function makeLimiter() {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    max: 60, // 60 requests per minute per client IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    // Key on the IP Express resolved (honors "trust proxy"). Falling back to the
+    // socket address keeps limiting functional even if req.ip is unavailable.
+    keyGenerator: (req) => req.ip || req.socket?.remoteAddress || "unknown",
+    // Don't rate-limit the health check (used by Docker/LB probes).
+    skip: (req) => req.path === "/health",
+  });
+}
+const limiter = makeLimiter();
+const reportLimiter = makeLimiter();
 
 // Health check for Docker / load balancers.
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
-// PDF endpoints — open for internal network use, no authentication.
-app.use("/api/pdf", limiter, pdfRouter);
+// PDF endpoints. Order matters: rate limit, then identity (401 when SSO is on
+// and the request carries none), then the activity log, then the real work.
+app.use("/api/pdf", limiter, authenticate, auditRequests, pdfRouter);
+
+// Who-am-I (any signed-in user) and the activity report (report viewers only).
+app.use("/api/report", reportLimiter, authenticate, reportRouter);
 
 // Centralized error handler.
 app.use((err, req, res, next) => {
@@ -65,8 +76,15 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message || "Internal server error" });
 });
 
+const auditOn = initAudit();
+if (config.authMode === "proxy" && config.reportAdmins.length === 0) {
+  console.warn("WARNING: AUTH_MODE=proxy but REPORT_ADMINS is empty - nobody can open the activity report.");
+}
+
 app.listen(config.port, () => {
   console.log(
-    `PDF tools API listening on :${config.port} (trust proxy: ${JSON.stringify(config.trustProxy)})`
+    `PDF tools API listening on :${config.port} ` +
+      `(trust proxy: ${JSON.stringify(config.trustProxy)}, auth: ${config.authMode}, ` +
+      `activity log: ${auditOn ? `on, keep ${config.auditRetentionDays} days` : "off"})`
   );
 });

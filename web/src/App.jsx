@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { getJson } from "./api.js";
+import ReportPanel from "./components/ReportPanel.jsx";
 import MergePanel from "./components/MergePanel.jsx";
 import SplitPanel from "./components/SplitPanel.jsx";
 import CompressPanel from "./components/CompressPanel.jsx";
@@ -46,15 +48,57 @@ const TABS = [
   },
 ];
 
+// Only offered to people allowed to see it (decided by the server, see /api/report/me).
+const REPORT_TAB = {
+  id: "report",
+  labelKey: "tab.report",
+  icon: "M9 17v-6m4 6V7m4 10v-3M5 21h14a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1z",
+  Panel: ReportPanel,
+};
+
+// Accept only same-site paths or https URLs for the sign-out link.
+const safeHref = (u) => (typeof u === "string" && (u.startsWith("/") || u.startsWith("https://")) ? u : null);
+
 export default function App() {
   const { t, lang, setLang } = useT();
   const [active, setActive] = useState("merge");
-  const ActivePanel = TABS.find((tab) => tab.id === active).Panel;
+  const [me, setMe] = useState(null);
+
+  // Who is signed in and may they open the report? Quietly ignored when the
+  // API is unreachable or SSO is off (the endpoint then reports no user).
+  useEffect(() => {
+    let alive = true;
+    getJson("/api/report/me")
+      .then((data) => alive && setMe(data))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const tabs = me?.canViewReport ? [...TABS, REPORT_TAB] : TABS;
+  const ActivePanel = (tabs.find((tab) => tab.id === active) ?? tabs[0]).Panel;
+  const signOutHref = safeHref(me?.logoutUrl);
 
   return (
     <div className="mx-auto flex min-h-full max-w-3xl flex-col px-4 py-8">
       <header className="mb-8">
-        <div className="mb-4 flex justify-end">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          {me?.user ? (
+            <p className="min-w-0 truncate text-sm text-slate-500">
+              {t("app.signedInAs")} <span className="font-medium text-slate-700">{me.user.email}</span>
+              {signOutHref && (
+                <>
+                  {" · "}
+                  <a href={signOutHref} className="text-brand-700 underline hover:text-brand-600">
+                    {t("app.signOut")}
+                  </a>
+                </>
+              )}
+            </p>
+          ) : (
+            <span />
+          )}
           <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 text-sm">
             <button
               onClick={() => setLang("id")}
@@ -94,7 +138,7 @@ export default function App() {
       </header>
 
       <nav className="mb-6 flex flex-wrap gap-2 rounded-xl bg-slate-100 p-1">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActive(tab.id)}

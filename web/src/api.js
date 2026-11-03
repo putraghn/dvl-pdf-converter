@@ -7,6 +7,38 @@ const API_BASE =
     ? "http://localhost:4000"
     : import.meta.env.VITE_API_BASE;
 
+// Shown (in both languages) when the SSO session has expired. The nginx layer
+// answers API calls with 401 instead of redirecting, so the page can explain
+// what happened rather than failing with an opaque network error.
+const SESSION_EXPIRED_MESSAGE =
+  "Sesi berakhir. Muat ulang halaman untuk login lagi. / Session expired. Reload the page to sign in again.";
+
+async function throwApiError(res) {
+  if (res.status === 401) throw new Error(SESSION_EXPIRED_MESSAGE);
+  let message = `Request failed (${res.status})`;
+  try {
+    const data = await res.json();
+    if (data.error) message = data.error;
+  } catch {
+    /* non-JSON error body */
+  }
+  throw new Error(message);
+}
+
+/** GET a JSON document from the API. */
+export async function getJson(path) {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+/** GET a file (e.g. the CSV export) from the API as a Blob. */
+export async function getBlob(path) {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) await throwApiError(res);
+  return res.blob();
+}
+
 /**
  * Posts a FormData payload to the given PDF endpoint and returns the resulting
  * blob plus any size headers. Throws with the server's error message on failure.
@@ -17,16 +49,7 @@ export async function postPdf(endpoint, formData) {
     body: formData,
   });
 
-  if (!res.ok) {
-    let message = `Request failed (${res.status})`;
-    try {
-      const data = await res.json();
-      if (data.error) message = data.error;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new Error(message);
-  }
+  if (!res.ok) await throwApiError(res);
 
   const blob = await res.blob();
   const filename =

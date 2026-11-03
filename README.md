@@ -156,6 +156,9 @@ Lihat `server/.env.example` dan `web/.env.example`. Yang umum diubah:
 - `MAX_FILE_MB` — batas ukuran per file (default 50 MB). Jika diubah besar, sesuaikan juga `client_max_body_size` di `web/nginx.conf`.
 - `MAX_FILES` — maksimum jumlah file untuk merge (default 20).
 - `TRUST_PROXY` — cara backend menentukan IP klien (dipakai rate limiting) di balik reverse proxy. Kosong/`false` = tidak percaya proxy (saat diekspos langsung). Angka `N` = jumlah hop proxy tepercaya di depan (set `1` untuk satu nginx/LB). Pada `docker compose`, sudah diset `1` karena backend ada di belakang container `web`. Jangan pakai `true` (bisa dipalsukan lewat `X-Forwarded-For`).
+- `GS_TIMEOUT_SEC` — batas waktu satu proses Ghostscript sebelum dihentikan paksa (default 60 detik; jawaban 422 bila terlampaui).
+- `GS_MAX_CONCURRENT` — jumlah proses Ghostscript yang boleh berjalan bersamaan (default 2).
+- `GS_MAX_QUEUE` — jumlah permintaan yang boleh menunggu giliran (default 5). Permintaan di antrean menyimpan file unggahannya di memori, jadi jaga angkanya kecil dibanding RAM container. Kelebihannya dijawab 503.
 
 ## Privasi data
 

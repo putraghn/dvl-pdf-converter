@@ -193,21 +193,81 @@ function ghostscriptCandidates() {
 
 function trySpawnGhostscript(bin, args) {
   return new Promise((resolve) => {
-    const gs = spawn(bin, args);
+    // stdin/stdout are ignored: nothing is read from them, and an unread stdout
+    // pipe could fill up and stall the process. Only stderr is kept (capped).
+    const gs = spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
-    gs.stderr.on("data", (d) => (stderr += d.toString()));
+    gs.stderr.on("data", (d) => {
+      if (stderr.length < 8192) stderr += d.toString();
+    });
+
+    // Hard time limit so a pathological file cannot hold a CPU forever.
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      gs.kill("SIGKILL");
+    }, config.gsTimeoutMs);
+
     // ENOENT => this candidate isn't installed; signal "not found" so the
     // caller can try the next one.
-    gs.on("error", (err) => resolve({ ok: false, notFound: err.code === "ENOENT", stderr: err.message }));
-    gs.on("close", (code) => resolve({ ok: code === 0, notFound: false, stderr: stderr || `exit ${code}` }));
+    gs.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, notFound: err.code === "ENOENT", timedOut: false, stderr: err.message });
+    });
+    gs.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ ok: !timedOut && code === 0, notFound: false, timedOut, stderr: stderr || `exit ${code}` });
+    });
   });
 }
 
-/** Runs Ghostscript with the given args, trying each candidate binary. */
-async function runGhostscript(args) {
+/**
+ * Minimal concurrency limiter: at most `maxActive` tasks run at once, up to
+ * `maxQueued` more wait their turn, anything beyond that is rejected with 503.
+ */
+function createLimiter(maxActive, maxQueued) {
+  let active = 0;
+  const queue = [];
+  const pump = () => {
+    while (active < maxActive && queue.length > 0) {
+      const { fn, resolve, reject } = queue.shift();
+      active++;
+      fn()
+        .then(resolve, reject)
+        .finally(() => {
+          active--;
+          pump();
+        });
+    }
+  };
+  return {
+    run(fn) {
+      return new Promise((resolve, reject) => {
+        if (active >= maxActive && queue.length >= maxQueued) {
+          const e = new Error("The server is busy processing other files. Please try again in a moment.");
+          e.status = 503;
+          return reject(e);
+        }
+        queue.push({ fn, resolve, reject });
+        pump();
+      });
+    },
+  };
+}
+
+const gsLimiter = createLimiter(config.gsMaxConcurrent, config.gsMaxQueue);
+
+async function runGhostscriptNow(args) {
   for (const bin of ghostscriptCandidates()) {
     const result = await trySpawnGhostscript(bin, args);
     if (result.ok) return;
+    if (result.timedOut) {
+      const e = new Error(
+        `Processing took longer than ${Math.round(config.gsTimeoutMs / 1000)} seconds and was stopped. The file may be too large or too complex.`
+      );
+      e.status = 422;
+      throw e;
+    }
     if (!result.notFound) {
       // Found the binary but it failed on this input — don't try others.
       throw new Error(`Ghostscript failed: ${result.stderr}`);
@@ -218,6 +278,11 @@ async function runGhostscript(args) {
   );
   e.status = 503;
   throw e;
+}
+
+/** Runs Ghostscript with the given args, trying each candidate binary. */
+function runGhostscript(args) {
+  return gsLimiter.run(() => runGhostscriptNow(args));
 }
 
 function compressArgs(inputPath, outputPath, level) {

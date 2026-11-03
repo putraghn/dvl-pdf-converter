@@ -1,6 +1,11 @@
-FROM node:20-slim
+# Debian 13 (trixie) base, deliberately NOT bookworm: Debian's bookworm
+# ghostscript (10.0.0~dfsg-11+deb12u8) is still vulnerable to CVE-2026-101258
+# (-dSAFER bypass -> command execution), while trixie ships a fixed build
+# (10.05.1~dfsg-1+deb13u3 or newer). Node 20 is also past end-of-life.
+# After building, confirm with:  docker compose exec server dpkg -l ghostscript
+FROM node:24-trixie-slim
 
-# Ghostscript is required for the /compress endpoint.
+# Ghostscript is required for compress, PDF -> JPG and protect.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ghostscript \
     && rm -rf /var/lib/apt/lists/*

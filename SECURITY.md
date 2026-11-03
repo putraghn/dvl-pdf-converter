@@ -48,7 +48,7 @@ Lihat juga bagian "Privasi data" di `README.md`.
 | Rate limiting            | `express-rate-limit`: 60 request/menit per IP klien. IP di-resolve via `trust proxy` yang dikonfigurasi (`TRUST_PROXY`), bukan `true` yang mudah dipalsukan |
 | Batas ukuran upload      | `MAX_FILE_MB` (default 50 MB/file); nginx `client_max_body_size 60m`    |
 | Batas jumlah file        | `MAX_FILES` (default 20) per request                                    |
-| Validasi tipe file       | Dua lapis: (1) `multer` fileFilter mimetype/ekstensi, (2) **cek magic-bytes** signature konten (`%PDF`, JPEG `FF D8 FF`, PNG) — file yang mengaku PDF/gambar tapi kontennya bukan akan ditolak 400 |
+| Validasi tipe file       | Dua lapis: (1) `multer` fileFilter mimetype/ekstensi, (2) **cek magic-bytes** signature konten (`%PDF-` **tepat di byte 0**, JPEG `FF D8 FF`, PNG) — file yang mengaku PDF/gambar tapi kontennya bukan akan ditolak 400 |
 | Validasi input           | `ranges` divalidasi regex + bounds; `dpi` di-clamp 72–300; `level` whitelist |
 | Command injection        | Ghostscript dipanggil `spawn(bin, argsArray)` — **tanpa shell**, tidak ada string interpolation |
 | Ghostscript sandbox      | `-dSAFER` aktif di semua pemanggilan (membatasi akses file & operasi berbahaya) |
@@ -57,6 +57,10 @@ Lihat juga bagian "Privasi data" di `README.md`.
 | PDF rusak/terenkripsi     | Ditangani, mengembalikan HTTP 400 yang rapi (bukan crash)              |
 | Error handling           | Handler terpusat; detail stack tidak dibocorkan ke client (hanya pesan) |
 | Container privilege      | Backend berjalan sebagai user `node` (non-root)                         |
+| Input ke Ghostscript     | Hanya file yang diawali `%PDF-` di byte 0 yang diteruskan. Header yang dicari di 1 KB pertama terbukti bisa dilewati PostScript yang menyamar sebagai PDF (Ghostscript menjalankannya sebagai PostScript); sekarang ditolak 400 di semua endpoint |
+| Batas proses Ghostscript | Timeout (`GS_TIMEOUT_SEC`, default 60 dtk, proses di-`SIGKILL`), maksimum proses bersamaan (`GS_MAX_CONCURRENT`, default 2) dan antrean pendek (`GS_MAX_QUEUE`, default 5); kelebihan beban dijawab 503. `stdin`/`stdout` Ghostscript diabaikan dan `stderr` dibatasi ukurannya |
+| Isolasi jaringan         | Container `server` hanya terhubung ke jaringan Docker `internal: true` — tanpa rute ke internet maupun LAN. Hanya container `web` (nginx) yang bisa menjangkaunya |
+| Versi Ghostscript        | Image berbasis Debian 13 (trixie), bukan bookworm: paket bookworm `10.0.0~dfsg-11+deb12u8` masih **vulnerable** terhadap CVE-2026-101258 (bypass `-dSAFER` → eksekusi perintah), trixie `10.05.1~dfsg-1+deb13u3`+ sudah diperbaiki (data Debian Security Tracker) |
 
 ---
 
@@ -96,7 +100,7 @@ Titik paling sensitif = pemrosesan Ghostscript (parser dokumen native). Dimitiga
 ## 6. Batasan & risiko yang diketahui (disclosure jujur)
 
 1. **Tidak ada autentikasi/otorisasi.** Siapa pun yang bisa menjangkau URL bisa memakai semua fitur. Mitigasi wajib: batasi akses di level jaringan (lihat §7).
-2. **Ghostscript memproses dokumen tidak tepercaya.** Parser dokumen secara historis pernah punya CVE. Mitigasi: `-dSAFER`, container non-root, dan **menjaga versi Ghostscript tetap mutakhir** (rebuild image berkala).
+2. **Ghostscript memproses dokumen tidak tepercaya — risiko residual tertinggi.** Parser dokumen ini secara historis berulang kali punya kerentanan, termasuk bypass sandbox `-dSAFER` (mis. CVE-2026-101258: dokumen PostScript/EPS buatan dapat mengeksekusi perintah shell meski `-dSAFER` aktif; Red Hat menyatakan belum ada mitigasi selain patch). Lapisan pertahanan yang diterapkan: (a) versi Ghostscript yang sudah diperbaiki (base image Debian trixie); (b) hanya file berheader `%PDF-` di byte 0 yang boleh sampai ke Ghostscript, sehingga interpreter PostScript tidak terjangkau lewat endpoint; (c) `-dSAFER`; (d) timeout dan batas konkurensi; (e) container non-root, `read_only`, `cap_drop: ALL`, `no-new-privileges`; (f) jaringan `internal` tanpa akses keluar. Risiko tidak bisa nol: kerentanan baru di parser PDF bisa muncul kapan saja, karena itu **rebuild image berkala dan pantau advisory Ghostscript/Debian** tetap wajib. Catatan: cek header hanya memastikan *jenis* file; tidak menjamin isi PDF aman bagi parser.
 3. **Potensi DoS lewat file besar/kompleks.** Dibatasi ukuran file, jumlah file, dan rate limit. Selain itu, `docker-compose.yml` kini menerapkan **resource limits** per container (server: 1 CPU / 768 MB / 256 PID; web: 0.5 CPU / 128 MB), `--no-new-privileges`, `cap_drop: ALL`, dan root filesystem `read_only` dengan tmpfs khusus untuk file temp. File PDF yang sangat kompleks tetap bisa memakan CPU dalam batas tersebut.
 4. **Rate limit per-IP.** `trust proxy` dapat dikonfigurasi via `TRUST_PROXY` (default: tidak percaya proxy; `docker compose` memakai `1` untuk nginx di depan). Penting: setel sesuai jumlah hop proxy nyata — nilai terlalu permisif (`true`) memungkinkan pemalsuan IP lewat `X-Forwarded-For` untuk melewati rate limit. nginx meneruskan IP klien via `X-Forwarded-For`.
 5. **Logging metadata.** `morgan` mencatat method/path/status/ukuran/durasi — **tanpa** isi atau nama file. Bisa dimatikan bila kebijakan menghendaki.
@@ -112,7 +116,8 @@ Titik paling sensitif = pemrosesan Ghostscript (parser dokumen native). Dimitiga
 - [ ] Set `CORS_ORIGIN` ke origin produksi yang pasti (bukan wildcard).
 - [x] Terapkan **resource limits** (CPU/memory/PID) pada container — sudah di `docker-compose.yml`. Sesuaikan angkanya dengan kapasitas host bila perlu.
 - [x] Konfigurasi `trust proxy` via `TRUST_PROXY` agar rate limiting akurat — `docker compose` sudah set `1`. Sesuaikan jumlah hop bila topologi proxy berbeda (mis. ada LB tambahan di depan nginx).
-- [ ] Jadwalkan **rebuild image berkala** agar Ghostscript & base image dapat patch keamanan.
+- [ ] Setelah build, **verifikasi versi Ghostscript** di container: `docker compose exec server dpkg -l ghostscript` — harus dari Debian 13 (`...deb13u3` atau lebih baru), bukan `...deb12u...`.
+- [ ] Jadwalkan **rebuild image berkala** (`docker compose build --pull --no-cache`) agar Ghostscript & base image dapat patch keamanan, dan pantau https://security-tracker.debian.org/tracker/source-package/ghostscript.
 - [ ] Simpan `.env` di luar version control (sudah di `.gitignore`).
 
 ---

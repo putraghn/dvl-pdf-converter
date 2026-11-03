@@ -16,9 +16,19 @@ services:
       TRUST_PROXY: "1"
       # read_only root FS: ensure temp files land on the writable tmpfs mount.
       TMPDIR: "/tmp"
+      # Bound Ghostscript runs (DoS): kill after 60 s, at most 2 at a time,
+      # up to 5 more requests may wait; beyond that the API answers 503.
+      GS_TIMEOUT_SEC: "60"
+      GS_MAX_CONCURRENT: "2"
+      GS_MAX_QUEUE: "5"
     restart: unless-stopped
     # Reap zombie Ghostscript child processes and forward signals cleanly.
     init: true
+    # Only on the internal "backend" network: no route to the internet or the
+    # corporate LAN. If Ghostscript were ever exploited, the process still could
+    # not phone home or reach other hosts. Only nginx (web) can talk to it.
+    networks:
+      - backend
     expose:
       - "4000"
     # Health check uses Node (always present in the image) — the slim image has
@@ -62,6 +72,10 @@ services:
       - "8080:80"
     restart: unless-stopped
     init: true
+    # "frontend" carries the published port; "backend" reaches the API.
+    networks:
+      - frontend
+      - backend
     # ── Resource limits ───────────────────────────────────
     deploy:
       resources:
@@ -76,3 +90,9 @@ services:
     tmpfs:
       - /var/cache/nginx:size=32m
       - /var/run:size=8m
+
+networks:
+  frontend: {}
+  backend:
+    # No external connectivity for anything attached only to this network.
+    internal: true

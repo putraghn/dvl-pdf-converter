@@ -11,6 +11,17 @@ export const config = {
   // typically "gswin64c". Set GHOSTSCRIPT_BIN to an explicit path to override.
   ghostscriptBin: process.env.GHOSTSCRIPT_BIN || "",
 
+  // Ghostscript runs are bounded so one hostile or pathological file cannot
+  // hold a CPU forever or pile up unlimited processes (DoS).
+  //  - GS_TIMEOUT_SEC: a run is killed after this many seconds (default 60).
+  //  - GS_MAX_CONCURRENT: simultaneous gs processes (default 2).
+  //  - GS_MAX_QUEUE: requests allowed to wait for a free slot (default 5);
+  //    beyond that the server answers 503 right away. Queued requests hold
+  //    their upload in memory, so keep this small relative to container RAM.
+  gsTimeoutMs: Math.round(positiveNumber(process.env.GS_TIMEOUT_SEC, 60) * 1000),
+  gsMaxConcurrent: Math.floor(positiveNumber(process.env.GS_MAX_CONCURRENT, 2)),
+  gsMaxQueue: Math.floor(positiveNumber(process.env.GS_MAX_QUEUE, 5)),
+
   // Express "trust proxy" setting — controls how the client IP is derived from
   // X-Forwarded-For, which rate limiting relies on. Leave unset (default) when
   // the app is directly exposed. Behind N trusted reverse proxies, set
@@ -20,6 +31,12 @@ export const config = {
   // passed through to Express (e.g. a subnet like "10.0.0.0/8").
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
 };
+
+/** Parses a positive number from an env string; falls back to `fallback` if unset/invalid. */
+function positiveNumber(raw, fallback) {
+  const n = Number(raw);
+  return raw !== undefined && raw !== "" && Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 function parseTrustProxy(raw) {
   if (raw === undefined || raw === "") return false;

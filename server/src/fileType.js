@@ -9,7 +9,7 @@
 // Signatures as byte arrays. A file matches if its leading bytes equal one of
 // the listed prefixes.
 const SIGNATURES = {
-  pdf: [[0x25, 0x50, 0x44, 0x46]], // "%PDF"
+  pdf: [[0x25, 0x50, 0x44, 0x46, 0x2d]], // "%PDF-"
   jpg: [[0xff, 0xd8, 0xff]], // JPEG SOI + marker
   png: [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]], // PNG magic
 };
@@ -23,20 +23,19 @@ function startsWith(buffer, prefix) {
 }
 
 /**
- * Some PDFs have leading whitespace or a UTF-8 BOM before "%PDF". Allow a small
- * offset scan so valid-but-slightly-off files aren't rejected, while still
- * refusing anything that doesn't contain the signature near the start.
+ * "%PDF-" must be at byte 0 — no scanning ahead.
+ *
+ * This is a security control, not just validation. Ghostscript decides how to
+ * interpret an input file from its content, and a PostScript program that
+ * merely mentions "%PDF-" in a comment within its first KB would pass a
+ * lenient scan yet still be run as PostScript (verified against Ghostscript
+ * 10.08). PostScript is the attack surface of the -dSAFER bypass CVEs, so we
+ * only hand Ghostscript files that begin with the PDF header.
+ *
+ * Trade-off: a legacy PDF with junk bytes before the header is rejected.
  */
-function hasPdfSignature(buffer) {
-  const scanLimit = Math.min(buffer.length - 4, 1024);
-  for (let i = 0; i <= scanLimit; i++) {
-    if (startsWith(buffer.subarray(i), SIGNATURES.pdf[0])) return true;
-  }
-  return false;
-}
-
 export function isPdfBuffer(buffer) {
-  return hasPdfSignature(buffer);
+  return startsWith(buffer, SIGNATURES.pdf[0]);
 }
 
 export function isJpgBuffer(buffer) {

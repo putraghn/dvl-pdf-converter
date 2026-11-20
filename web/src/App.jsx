@@ -85,18 +85,25 @@ export default function App() {
       <header className="mb-8">
         <div className="mb-4 flex items-center justify-between gap-3">
           {me?.user ? (
-            <p className="min-w-0 truncate text-sm text-slate-500">
-              {t("app.signedInAs")} <span className="font-medium text-slate-700">{me.user.email}</span>
+            <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-1 text-sm shadow-sm">
+              <span
+                aria-hidden="true"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold uppercase text-white"
+              >
+                {(me.user.email || "?").charAt(0)}
+              </span>
+              <span className="min-w-0 truncate font-medium text-slate-700" title={me.user.email}>
+                {String(me.user.email || "").toLowerCase()}
+              </span>
               {signOutHref && (
-                <>
-                  {" · "}
-                  <a href={signOutHref} className="text-brand-700 underline hover:text-brand-600">
-                    {t("app.signOut")}
-                  </a>
-                </>
+                <a
+                  href={signOutHref}
+                  className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200 hover:text-slate-800"
+                >
+                  {t("app.signOut")}
+                </a>
               )}
-            </p>
-          ) : (
+            </div>          ) : (
             <span />
           )}
           <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 text-sm">

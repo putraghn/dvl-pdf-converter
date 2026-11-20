@@ -14,6 +14,8 @@ const ACTION_LABEL = {
   protect: "tab.protect",
 };
 
+/** "nano.pamungkas@darya-varia.com" -> "nano.pamungkas" (the full email stays in tooltips, filters and CSV). */
+const userName = (email) => String(email ?? "").split("@")[0];
 const pad = (n) => String(n).padStart(2, "0");
 const toDateInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
@@ -32,6 +34,37 @@ function rangeParams(from, to) {
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
 
+// Entries table columns. Widths are in px and can be dragged by the user.
+const COLUMNS = [
+  { id: "time", label: "report.col.time", w: 160 },
+  { id: "user", label: "report.col.user", w: 210 },
+  { id: "action", label: "report.col.action", w: 110 },
+  { id: "file", label: "report.col.file", w: 320 },
+  { id: "result", label: "report.col.result", w: 110 },
+  { id: "files", label: "report.col.files", w: 70, right: true },
+  { id: "input", label: "report.col.input", w: 90, right: true },
+  { id: "output", label: "report.col.output", w: 90, right: true },
+  { id: "duration", label: "report.col.duration", w: 100, right: true },
+  { id: "ip", label: "report.col.ip", w: 120 },
+];
+const MIN_COL_W = 50;
+const MAX_COL_W = 1000;
+const WIDTHS_KEY = "report.colWidths";
+const defaultWidths = () => Object.fromEntries(COLUMNS.map((c) => [c.id, c.w]));
+
+function loadWidths() {
+  const base = defaultWidths();
+  try {
+    const saved = JSON.parse(localStorage.getItem(WIDTHS_KEY) || "{}");
+    for (const id of Object.keys(base)) {
+      const v = Number(saved[id]);
+      if (Number.isFinite(v)) base[id] = Math.min(MAX_COL_W, Math.max(MIN_COL_W, v));
+    }
+  } catch {
+    /* ignore unreadable storage */
+  }
+  return base;
+}
 function Card({ label, value }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
@@ -85,6 +118,32 @@ export default function ReportPanel({ retentionDays = 45 }) {
   const [entries, setEntries] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [widths, setWidths] = useState(loadWidths);
+  useEffect(() => {
+    try {
+      localStorage.setItem(WIDTHS_KEY, JSON.stringify(widths));
+    } catch {
+      /* storage may be unavailable */
+    }
+  }, [widths]);
+  const tableWidth = COLUMNS.reduce((sum, c) => sum + widths[c.id], 0);
+
+  function startResize(e, id) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = widths[id];
+    const onMove = (ev) => {
+      const w = Math.min(MAX_COL_W, Math.max(MIN_COL_W, startW + ev.clientX - startX));
+      setWidths((prev) => ({ ...prev, [id]: w }));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+  const resetWidth = (id) => setWidths((prev) => ({ ...prev, [id]: defaultWidths()[id] }));
 
   const filterParams = () => {
     const p = rangeParams(from, to);
@@ -164,8 +223,8 @@ export default function ReportPanel({ retentionDays = 45 }) {
           <select value={user} onChange={(e) => setUser(e.target.value)} className={`${inputClass} mt-1`}>
             <option value="">{t("report.allUsers")}</option>
             {(summary?.users ?? []).map((u) => (
-              <option key={u} value={u}>
-                {u}
+              <option key={u} value={u} title={u}>
+                {userName(u)}
               </option>
             ))}
           </select>
@@ -212,7 +271,7 @@ export default function ReportPanel({ retentionDays = 45 }) {
             <>
               <div className="grid gap-3 sm:grid-cols-2">
                 <SummaryTable title={t("report.byAction")} rows={summary.byAction} keyLabel={t("report.col.action")} countLabel={t("report.col.count")} renderKey={actionLabel} />
-                <SummaryTable title={t("report.byUser")} rows={summary.byUser} keyLabel={t("report.col.user")} countLabel={t("report.col.count")} className="sm:col-span-2" />
+                <SummaryTable title={t("report.byUser")} rows={summary.byUser} renderKey={userName} keyLabel={t("report.col.user")} countLabel={t("report.col.count")} className="sm:col-span-2" />
                 <SummaryTable title={t("report.byDay")} rows={summary.byDay} keyLabel={t("report.col.day")} countLabel={t("report.col.count")} />
               </div>
 
@@ -228,30 +287,38 @@ export default function ReportPanel({ retentionDays = 45 }) {
                   </button>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[56rem] text-sm">
+                  <table className="table-fixed text-sm" style={{ width: tableWidth }}>
+                    <colgroup>
+                      {COLUMNS.map((c) => (
+                        <col key={c.id} style={{ width: widths[c.id] }} />
+                      ))}
+                    </colgroup>
                     <thead className="bg-slate-50 text-left text-xs text-slate-500">
                       <tr>
-                        <th className="px-3 py-2 font-medium">{t("report.col.time")}</th>
-                        <th className="px-3 py-2 font-medium">{t("report.col.user")}</th>
-                        <th className="px-3 py-2 font-medium">{t("report.col.action")}</th>
-                        <th className="px-3 py-2 font-medium">{t("report.col.file")}</th>
-                        <th className="px-3 py-2 font-medium">{t("report.col.result")}</th>
-                        <th className="px-3 py-2 text-right font-medium">{t("report.col.files")}</th>
-                        <th className="px-3 py-2 text-right font-medium">{t("report.col.input")}</th>
-                        <th className="px-3 py-2 text-right font-medium">{t("report.col.output")}</th>
-                        <th className="px-3 py-2 text-right font-medium">{t("report.col.duration")}</th>
-                        <th className="px-3 py-2 font-medium">{t("report.col.ip")}</th>
+                        {COLUMNS.map((c) => (
+                          <th key={c.id} className={`relative px-3 py-2 font-medium ${c.right ? "text-right" : ""}`}>
+                            <span className="block truncate">{t(c.label)}</span>
+                            <span
+                              role="separator"
+                              aria-orientation="vertical"
+                              title={t("report.resizeHint")}
+                              onPointerDown={(e) => startResize(e, c.id)}
+                              onDoubleClick={() => resetWidth(c.id)}
+                              className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none select-none border-r border-slate-200 hover:border-brand-500 hover:bg-brand-100"
+                            />
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
                       {(entries?.rows ?? []).map((r) => (
-                        <tr key={r.id} className="border-t border-slate-100">
-                          <td className="whitespace-nowrap px-3 py-1.5 text-slate-700">{new Date(r.ts).toLocaleString()}</td>
-                          <td className="max-w-[14rem] truncate px-3 py-1.5 text-slate-700" title={r.user_email}>
-                            {r.user_email}
+                        <tr key={r.id} className="border-t border-slate-100 align-top">
+                          <td className="truncate px-3 py-1.5 text-slate-700">{new Date(r.ts).toLocaleString()}</td>
+                          <td className="truncate px-3 py-1.5 text-slate-700" title={r.user_email}>
+                            {userName(r.user_email)}
                           </td>
-                          <td className="px-3 py-1.5 text-slate-700">{actionLabel(r.action)}</td>
-                          <td className="max-w-[18rem] px-3 py-1.5 text-slate-700">
+                          <td className="truncate px-3 py-1.5 text-slate-700">{actionLabel(r.action)}</td>
+                          <td className="px-3 py-1.5 text-slate-700">
                             {r.file_names?.length ? (
                               <ul className="space-y-0.5">
                                 {r.file_names.map((n, i) => (
@@ -264,16 +331,16 @@ export default function ReportPanel({ retentionDays = 45 }) {
                               "-"
                             )}
                           </td>
-                          <td className="px-3 py-1.5">
+                          <td className="truncate px-3 py-1.5">
                             <span className={r.success ? "text-green-700" : "text-red-700"}>
                               {r.success ? t("report.result.success") : `${t("report.result.failed")} (${r.http_status})`}
                             </span>
                           </td>
-                          <td className="px-3 py-1.5 text-right text-slate-700">{r.input_files}</td>
-                          <td className="whitespace-nowrap px-3 py-1.5 text-right text-slate-700">{formatBytes(r.input_bytes) || "0 B"}</td>
-                          <td className="whitespace-nowrap px-3 py-1.5 text-right text-slate-700">{r.output_bytes ? formatBytes(r.output_bytes) : "-"}</td>
-                          <td className="whitespace-nowrap px-3 py-1.5 text-right text-slate-700">{r.duration_ms} ms</td>
-                          <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{r.ip || "-"}</td>
+                          <td className="truncate px-3 py-1.5 text-right text-slate-700">{r.input_files}</td>
+                          <td className="truncate px-3 py-1.5 text-right text-slate-700">{formatBytes(r.input_bytes) || "0 B"}</td>
+                          <td className="truncate px-3 py-1.5 text-right text-slate-700">{r.output_bytes ? formatBytes(r.output_bytes) : "-"}</td>
+                          <td className="truncate px-3 py-1.5 text-right text-slate-700">{r.duration_ms} ms</td>
+                          <td className="truncate px-3 py-1.5 text-slate-500">{r.ip || "-"}</td>
                         </tr>
                       ))}
                     </tbody>

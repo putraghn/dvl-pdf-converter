@@ -282,7 +282,8 @@ Browser ─HTTPS─► proxy TLS perusahaan ─► nginx ──auth_request─�
 ### 10.2 Log aktivitas
 
 - **Isi**: waktu (UTC), pengguna (email/UPN dan ID), aksi, hasil (sukses/gagal + kode HTTP), jumlah dan ukuran file, ukuran output, durasi, IP klien.
-- **Tidak disimpan**: isi file, **nama file**, password. Terbukti lewat pengujian yang memindai database dan berkas WAL mentah.
+- **Disimpan**: nama file yang diunggah (dibersihkan dari karakter kontrol, maks. 255 karakter per nama, maks. 50 nama per request), agar laporan menunjukkan dokumen yang diproses. Nama file bisa memuat informasi sensitif; akses laporan dibatasi `REPORT_ADMINS` dan data dihapus setelah 45 hari.
+- **Tidak disimpan**: isi file dan password.
 - **Retensi**: 45 hari (`AUDIT_RETENTION_DAYS`). Baris yang lebih lama dihapus saat server mulai dan tiap 6 jam.
 - **Penyimpanan**: berkas SQLite di volume Docker `audit-data`; ini **satu-satunya data persisten** aplikasi.
 - **Akses laporan**: hanya pengguna yang ada di `REPORT_ADMINS`. Di mode tanpa login laporan selalu tertutup.

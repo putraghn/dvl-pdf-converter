@@ -96,7 +96,7 @@ const translations = {
     "tab.report": "Laporan",
 
     "report.desc":
-      "Aktivitas pengguna. Data disimpan {days} hari, hanya metadata (tanpa isi maupun nama file).",
+      "Aktivitas pengguna. Data disimpan {days} hari: metadata dan nama file, tanpa isi dokumen.",
     "report.from": "Dari tanggal",
     "report.to": "Sampai tanggal",
     "report.user": "Pengguna",
@@ -115,6 +115,7 @@ const translations = {
     "report.byDay": "Per hari",
     "report.entries": "Rincian aktivitas",
     "report.col.time": "Waktu",
+    "report.col.day": "Tanggal",
     "report.col.user": "Pengguna",
     "report.col.action": "Aksi",
     "report.col.result": "Hasil",
@@ -123,6 +124,9 @@ const translations = {
     "report.col.output": "Output",
     "report.col.duration": "Durasi",
     "report.col.ip": "IP",
+    "report.col.file": "Nama file",
+    "report.file": "Nama file",
+    "report.filePlaceholder": "Cari nama file...",
     "report.col.count": "Jumlah",
     "report.result.success": "Berhasil",
     "report.result.failed": "Gagal",
@@ -227,7 +231,7 @@ const translations = {
     "tab.report": "Report",
 
     "report.desc":
-      "User activity. Kept for {days} days, metadata only (no file contents or file names).",
+      "User activity. Kept for {days} days: metadata and file names, never file contents.",
     "report.from": "From date",
     "report.to": "To date",
     "report.user": "User",
@@ -246,6 +250,7 @@ const translations = {
     "report.byDay": "By day",
     "report.entries": "Activity details",
     "report.col.time": "Time",
+    "report.col.day": "Date",
     "report.col.user": "User",
     "report.col.action": "Action",
     "report.col.result": "Result",
@@ -254,6 +259,9 @@ const translations = {
     "report.col.output": "Output",
     "report.col.duration": "Duration",
     "report.col.ip": "IP",
+    "report.col.file": "File name",
+    "report.file": "File name",
+    "report.filePlaceholder": "Search file name...",
     "report.col.count": "Count",
     "report.result.success": "Success",
     "report.result.failed": "Failed",

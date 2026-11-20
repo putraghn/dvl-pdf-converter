@@ -41,21 +41,21 @@ function Card({ label, value }) {
   );
 }
 
-function SummaryTable({ title, rows, keyLabel, countLabel, renderKey }) {
+function SummaryTable({ title, rows, keyLabel, countLabel, renderKey, className = "" }) {
   return (
-    <div className="rounded-lg border border-slate-200">
+    <div className={`min-w-0 overflow-hidden rounded-lg border border-slate-200 ${className}`}>
       <p className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{title}</p>
-      <table className="w-full text-sm">
+      <table className="w-full table-fixed text-sm">
         <thead>
           <tr className="text-left text-xs text-slate-400">
             <th className="px-3 py-1.5 font-medium">{keyLabel}</th>
-            <th className="px-3 py-1.5 text-right font-medium">{countLabel}</th>
+            <th className="w-16 px-3 py-1.5 text-right font-medium">{countLabel}</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.key} className="border-t border-slate-100">
-              <td className="max-w-[16rem] truncate px-3 py-1.5 text-slate-700" title={r.key}>
+              <td className="truncate px-3 py-1.5 text-slate-700" title={r.key}>
                 {renderKey ? renderKey(r.key) : r.key}
               </td>
               <td className="px-3 py-1.5 text-right text-slate-700">{r.total}</td>
@@ -77,6 +77,8 @@ export default function ReportPanel({ retentionDays = 45 }) {
   const [to, setTo] = useState(toDateInput(today));
   const [user, setUser] = useState("");
   const [action, setAction] = useState("");
+  const [file, setFile] = useState("");
+  const [fileQuery, setFileQuery] = useState(""); // debounced copy of `file`
   const [page, setPage] = useState(1);
 
   const [summary, setSummary] = useState(null);
@@ -88,13 +90,20 @@ export default function ReportPanel({ retentionDays = 45 }) {
     const p = rangeParams(from, to);
     if (user) p.set("user", user);
     if (action) p.set("action", action);
+    if (fileQuery.trim()) p.set("file", fileQuery.trim());
     return p;
   };
+
+  // Wait for typing to pause before querying.
+  useEffect(() => {
+    const id = setTimeout(() => setFileQuery(file), 400);
+    return () => clearTimeout(id);
+  }, [file]);
 
   // Any filter change goes back to page 1.
   useEffect(() => {
     setPage(1);
-  }, [from, to, user, action]);
+  }, [from, to, user, action, fileQuery]);
 
   useEffect(() => {
     let alive = true;
@@ -121,7 +130,7 @@ export default function ReportPanel({ retentionDays = 45 }) {
     };
     // filterParams reads the same state listed here
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, user, action, page]);
+  }, [from, to, user, action, fileQuery, page]);
 
   async function exportCsv() {
     setError("");
@@ -174,6 +183,18 @@ export default function ReportPanel({ retentionDays = 45 }) {
         </label>
       </div>
 
+      <label className="block text-sm font-medium text-slate-700">
+        {t("report.file")}
+        <input
+          type="search"
+          value={file}
+          maxLength={255}
+          onChange={(e) => setFile(e.target.value)}
+          placeholder={t("report.filePlaceholder")}
+          className={`${inputClass} mt-1`}
+        />
+      </label>
+
       <StatusBar busy={busy} error={error} success="" />
 
       {totals && (
@@ -189,10 +210,10 @@ export default function ReportPanel({ retentionDays = 45 }) {
             <p className="rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">{t("report.noData")}</p>
           ) : (
             <>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <SummaryTable title={t("report.byAction")} rows={summary.byAction} keyLabel={t("report.col.action")} countLabel={t("report.col.count")} renderKey={actionLabel} />
-                <SummaryTable title={t("report.byUser")} rows={summary.byUser} keyLabel={t("report.col.user")} countLabel={t("report.col.count")} />
-                <SummaryTable title={t("report.byDay")} rows={summary.byDay} keyLabel={t("report.from")} countLabel={t("report.col.count")} />
+                <SummaryTable title={t("report.byUser")} rows={summary.byUser} keyLabel={t("report.col.user")} countLabel={t("report.col.count")} className="sm:col-span-2" />
+                <SummaryTable title={t("report.byDay")} rows={summary.byDay} keyLabel={t("report.col.day")} countLabel={t("report.col.count")} />
               </div>
 
               <div>
@@ -207,12 +228,13 @@ export default function ReportPanel({ retentionDays = 45 }) {
                   </button>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[40rem] text-sm">
+                  <table className="w-full min-w-[56rem] text-sm">
                     <thead className="bg-slate-50 text-left text-xs text-slate-500">
                       <tr>
                         <th className="px-3 py-2 font-medium">{t("report.col.time")}</th>
                         <th className="px-3 py-2 font-medium">{t("report.col.user")}</th>
                         <th className="px-3 py-2 font-medium">{t("report.col.action")}</th>
+                        <th className="px-3 py-2 font-medium">{t("report.col.file")}</th>
                         <th className="px-3 py-2 font-medium">{t("report.col.result")}</th>
                         <th className="px-3 py-2 text-right font-medium">{t("report.col.files")}</th>
                         <th className="px-3 py-2 text-right font-medium">{t("report.col.input")}</th>
@@ -229,6 +251,19 @@ export default function ReportPanel({ retentionDays = 45 }) {
                             {r.user_email}
                           </td>
                           <td className="px-3 py-1.5 text-slate-700">{actionLabel(r.action)}</td>
+                          <td className="max-w-[18rem] px-3 py-1.5 text-slate-700">
+                            {r.file_names?.length ? (
+                              <ul className="space-y-0.5">
+                                {r.file_names.map((n, i) => (
+                                  <li key={i} className="break-all" title={n}>
+                                    {n}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
                           <td className="px-3 py-1.5">
                             <span className={r.success ? "text-green-700" : "text-red-700"}>
                               {r.success ? t("report.result.success") : `${t("report.result.failed")} (${r.http_status})`}

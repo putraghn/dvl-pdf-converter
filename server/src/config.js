@@ -43,7 +43,7 @@ export const config = {
 
   // ── Activity log (who did what), used for reports ───────────────────────
   // SQLite file; empty path = disabled. Only metadata is stored (user, action,
-  // result, sizes, duration, IP) - never file contents, file names or
+  // result, sizes, duration, IP, uploaded file names) - never file contents or
   // passwords. Rows older than the retention period are deleted.
   auditDbPath: process.env.AUDIT_DB_PATH || "",
   auditRetentionDays: Math.floor(positiveNumber(process.env.AUDIT_RETENTION_DAYS, 45)),

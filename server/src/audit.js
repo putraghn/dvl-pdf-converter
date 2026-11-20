@@ -6,7 +6,8 @@ import { config } from "./config.js";
 /**
  * Activity log: one row per processing request ("who did what").
  *
- * Privacy: only metadata is stored - never file contents, file names or
+ * Privacy: only metadata is stored - the names of the uploaded files (so the
+ * report can show which documents were processed), but never file contents or
  * passwords. Failing to write a row never fails the user's request.
  */
 
@@ -48,16 +49,22 @@ export function initAudit(dbPath = config.auditDbPath) {
       input_bytes   INTEGER NOT NULL DEFAULT 0,
       output_bytes  INTEGER,
       duration_ms   INTEGER NOT NULL,
-      ip            TEXT
+      ip            TEXT,
+      file_names    TEXT                        -- JSON array of uploaded file names
     );
     CREATE INDEX IF NOT EXISTS idx_audit_ts   ON audit_log (ts);
     CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log (user_email, ts);
   `);
+  // Databases created before file names were recorded lack the column.
+  const cols = db.prepare("PRAGMA table_info(audit_log)").all();
+  if (!cols.some((c) => c.name === "file_names")) {
+    db.exec("ALTER TABLE audit_log ADD COLUMN file_names TEXT");
+  }
   insertStmt = db.prepare(
     `INSERT INTO audit_log
        (ts, user_id, user_email, action, success, http_status,
-        input_files, input_bytes, output_bytes, duration_ms, ip)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        input_files, input_bytes, output_bytes, duration_ms, ip, file_names)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   purgeExpired();
@@ -92,12 +99,29 @@ export function recordAudit(e) {
       e.inputBytes,
       e.outputBytes ?? null,
       e.durationMs,
-      e.ip ?? null
+      e.ip ?? null,
+      e.fileNames && e.fileNames.length ? JSON.stringify(e.fileNames) : null
     );
   } catch (err) {
     // Fail open: reporting is a convenience, it must not break PDF processing.
     console.error("audit write failed:", err.message);
   }
+}
+
+const MAX_NAME_LEN = 255;
+const MAX_NAMES = 50;
+
+/**
+ * Names come from the client. multer decodes them as latin1, so restore UTF-8,
+ * drop control characters and cap the length before they are stored.
+ */
+export function cleanFileName(raw) {
+  let s = String(raw ?? "");
+  const utf8 = Buffer.from(s, "latin1").toString("utf8");
+  if (!utf8.includes("\uFFFD")) s = utf8;
+  // eslint-disable-next-line no-control-regex
+  s = s.replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  return s.length > MAX_NAME_LEN ? s.slice(0, MAX_NAME_LEN) : s;
 }
 
 /** Express middleware: records one row when a processing request finishes. */
@@ -130,6 +154,10 @@ export function auditRequests(req, res, next) {
       outputBytes: Number.isFinite(outLen) && outLen > 0 ? outLen : null,
       durationMs: Date.now() - started,
       ip: req.ip,
+      fileNames: files
+        .slice(0, MAX_NAMES)
+        .map((f) => cleanFileName(f.originalname))
+        .filter(Boolean),
     });
   });
   next();
@@ -137,7 +165,7 @@ export function auditRequests(req, res, next) {
 
 // ── Queries for the report ─────────────────────────────────────────────────
 
-function whereClause({ from, to, user, action }) {
+function whereClause({ from, to, user, action, file }) {
   const parts = [];
   const params = [];
   if (from) {
@@ -155,6 +183,11 @@ function whereClause({ from, to, user, action }) {
   if (action) {
     parts.push("action = ?");
     params.push(action);
+  }
+  if (file) {
+    // Case-insensitive substring match; % _ and \ in the input are literal.
+    parts.push("file_names LIKE ? ESCAPE '\\'");
+    params.push(`%${file.replace(/[\\%_]/g, (c) => "\\" + c)}%`);
   }
   return { sql: parts.length ? `WHERE ${parts.join(" AND ")}` : "", params };
 }

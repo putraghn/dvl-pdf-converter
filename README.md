@@ -199,7 +199,7 @@ docker compose --env-file .env.sso -f docker-compose.yml -f docker-compose.sso.y
 4. Sesi habis (8 jam): aksi berikutnya menampilkan pesan "Sesi berakhir", muat ulang untuk login lagi.
 
 ### Log aktivitas
-- Yang dicatat: waktu, pengguna, aksi, hasil, jumlah/ukuran file, durasi, IP. **Tidak** isi file, nama file, atau password.
+- Yang dicatat: waktu, pengguna, aksi, hasil, jumlah/ukuran file, durasi, IP. Nama file yang diunggah ikut dicatat (bisa dicari dan masuk ekspor CSV). **Tidak** isi file atau password.
 - Disimpan **45 hari** lalu dihapus otomatis (`AUDIT_RETENTION_DAYS`), di volume Docker `audit-data`.
 - Laporan dapat difilter (tanggal, pengguna, aksi) dan diunduh sebagai CSV.
 

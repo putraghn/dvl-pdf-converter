@@ -34,11 +34,13 @@ function parseFilters(q) {
   const action = typeof q.action === "string" ? q.action.trim() : "";
   if (action && !ACTIONS.includes(action)) throw badRequest(`"action" must be one of: ${ACTIONS.join(", ")}.`);
 
+  const file = typeof q.file === "string" ? q.file.trim() : "";
+  if (file.length > 255) throw badRequest('"file" is too long.');
   let tz = q.tz === undefined || q.tz === "" ? 0 : Number(q.tz);
   if (!Number.isInteger(tz) || tz < -840 || tz > 840) tz = 0;
 
   return {
-    filters: { from: parseIso(q.from, "from"), to: parseIso(q.to, "to"), user, action },
+    filters: { from: parseIso(q.from, "from"), to: parseIso(q.to, "to"), user, action, file },
     tz,
   };
 }
@@ -88,7 +90,17 @@ router.get("/entries", (req, res) => {
   const pageSize = Math.min(200, Math.max(1, parseInt(req.query.pageSize, 10) || 50));
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const { total, rows } = getEntries(filters, { limit: pageSize, offset: (page - 1) * pageSize });
-  res.json({ total, page, pageSize, rows });
+  const out = rows.map((r) => {
+    let names = [];
+    try {
+      const arr = r.file_names ? JSON.parse(r.file_names) : [];
+      if (Array.isArray(arr)) names = arr;
+    } catch {
+      /* ignore malformed value */
+    }
+    return { ...r, file_names: names };
+  });
+  res.json({ total, page, pageSize, rows: out });
 });
 
 /**
@@ -103,6 +115,17 @@ function csvCell(value) {
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
   return s;
+}
+
+/** file_names is stored as a JSON array; show it as "a.pdf; b.pdf". */
+function fileNamesText(raw) {
+  if (!raw) return "";
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.join("; ") : "";
+  } catch {
+    return "";
+  }
 }
 
 router.get("/export.csv", (req, res) => {
@@ -120,6 +143,7 @@ router.get("/export.csv", (req, res) => {
     "output_bytes",
     "duration_ms",
     "ip",
+    "file_names",
   ];
   const lines = [header.join(",")];
   for (const r of rows) {
@@ -136,6 +160,7 @@ router.get("/export.csv", (req, res) => {
         r.output_bytes,
         r.duration_ms,
         r.ip,
+        fileNamesText(r.file_names),
       ]
         .map(csvCell)
         .join(",")

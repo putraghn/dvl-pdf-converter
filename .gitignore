@@ -2,6 +2,8 @@ node_modules/
 dist/
 .env
 .env.local
+# TLS private key and certificates (SSO deployment)
+certs/
 # Secrets for the SSO deployment (the committed template is .env.sso.example)
 .env.sso
 *.log

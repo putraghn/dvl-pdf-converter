@@ -72,11 +72,15 @@ services:
       - audit-data:/data
 
   web:
+    ports:
+      - "443:443"
     depends_on:
       oauth2-proxy:
         condition: service_started
     volumes:
       - ./web/nginx.sso.conf:/etc/nginx/conf.d/default.conf:ro
+      # fullchain.pem + privkey.pem (never committed; certs/ is git-ignored).
+      - ./certs:/etc/nginx/certs:ro
 
 volumes:
   audit-data: {}

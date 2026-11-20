@@ -27,6 +27,20 @@ export function authenticate(req, res, next) {
   next();
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Days left until the Entra client secret expires (negative once it has);
+ * null when no expiry date is configured. The secret is treated as expiring at
+ * 00:00 UTC on the configured date, which errs on the early side.
+ */
+export function secretExpiryInfo(date = config.entraSecretExpires, now = Date.now()) {
+  if (!date) return null;
+  const expiresAt = Date.parse(`${date}T00:00:00Z`);
+  if (Number.isNaN(expiresAt)) return null;
+  return { date, daysLeft: Math.ceil((expiresAt - now) / DAY_MS) };
+}
+
 export function isReportViewer(user) {
   return (
     config.authMode === "proxy" &&

@@ -129,6 +129,11 @@ const translations = {
     "report.prev": "Sebelumnya",
     "report.next": "Berikutnya",
     "report.page": "Halaman {page} dari {pages}",
+
+    "app.secretExpiring":
+      "Client secret login Microsoft akan kedaluwarsa dalam {days} hari ({date}). Perbarui sebelum itu, atau login semua pengguna akan berhenti. Lihat README, bagian Pemulihan.",
+    "app.secretExpired":
+      "Client secret login Microsoft sudah kedaluwarsa pada {date}. Login akan gagal sampai diperbarui. Lihat README, bagian Pemulihan.",
   },
   en: {
     "app.title": "PDF Tools",
@@ -255,6 +260,11 @@ const translations = {
     "report.prev": "Previous",
     "report.next": "Next",
     "report.page": "Page {page} of {pages}",
+
+    "app.secretExpiring":
+      "The Microsoft sign-in client secret expires in {days} days ({date}). Renew it before then, or sign-in will stop for everyone. See the README, section Pemulihan.",
+    "app.secretExpired":
+      "The Microsoft sign-in client secret expired on {date}. Sign-in will fail until it is renewed. See the README, section Pemulihan.",
   },
 };
 

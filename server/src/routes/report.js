@@ -1,6 +1,6 @@
 import express from "express";
 import { config } from "../config.js";
-import { isReportViewer, requireReportViewer } from "../auth.js";
+import { isReportViewer, requireReportViewer, secretExpiryInfo } from "../auth.js";
 import {
   ACTIONS,
   auditEnabled,
@@ -54,12 +54,16 @@ function requireAuditStore(req, res, next) {
 // to show the user's name and decide whether to offer the report tab.
 router.get("/me", (req, res) => {
   const signedIn = config.authMode === "proxy";
+  const viewer = isReportViewer(req.user);
+  // Only admins are told about the secret's expiry; ordinary users never see it.
+  const expiry = viewer ? secretExpiryInfo() : null;
   res.json({
     authMode: config.authMode,
     user: signedIn ? { email: req.user.email } : null,
-    canViewReport: isReportViewer(req.user) && auditEnabled(),
+    canViewReport: viewer && auditEnabled(),
     logoutUrl: signedIn ? config.logoutUrl : null,
     retentionDays: config.auditRetentionDays,
+    ...(expiry ? { secretExpiry: expiry } : {}),
   });
 });
 

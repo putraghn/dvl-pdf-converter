@@ -5,7 +5,7 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
 import { config } from "./config.js";
-import { authenticate } from "./auth.js";
+import { authenticate, secretExpiryInfo } from "./auth.js";
 import { auditRequests, initAudit } from "./audit.js";
 import pdfRouter from "./routes/pdf.js";
 import reportRouter from "./routes/report.js";
@@ -79,6 +79,18 @@ app.use((err, req, res, next) => {
 const auditOn = initAudit();
 if (config.authMode === "proxy" && config.reportAdmins.length === 0) {
   console.warn("WARNING: AUTH_MODE=proxy but REPORT_ADMINS is empty - nobody can open the activity report.");
+}
+if (config.authMode === "proxy") {
+  const exp = secretExpiryInfo();
+  if (config.entraSecretExpiresInvalid) {
+    console.warn("WARNING: ENTRA_SECRET_EXPIRES must look like 2028-11-03; it was ignored, so no expiry reminder will be shown.");
+  } else if (!exp) {
+    console.warn("NOTE: ENTRA_SECRET_EXPIRES is not set. Set it so admins are warned before the Entra client secret expires.");
+  } else if (exp.daysLeft < 0) {
+    console.error(`WARNING: the Entra client secret EXPIRED on ${exp.date}. Sign-in will fail until it is renewed (see README, "Pemulihan").`);
+  } else if (exp.daysLeft <= 30) {
+    console.warn(`WARNING: the Entra client secret expires in ${exp.daysLeft} day(s), on ${exp.date}. Renew it before then (see README, "Pemulihan").`);
+  }
 }
 
 app.listen(config.port, () => {

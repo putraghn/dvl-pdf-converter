@@ -204,7 +204,7 @@ docker compose --env-file .env.sso -f docker-compose.yml -f docker-compose.sso.y
 - Laporan dapat difilter (tanggal, pengguna, aksi) dan diunduh sebagai CSV.
 
 ### Perawatan
-- **Client secret kedaluwarsa**: perbarui di Entra dan `.env.sso`, lalu `docker compose ... up -d`. Bila lewat tanggalnya, login berhenti.
+- **Client secret kedaluwarsa**: bila lewat tanggalnya, login semua orang berhenti. Isi `ENTRA_SECRET_EXPIRES` di `.env.sso` agar admin diperingatkan di aplikasi 30 hari sebelumnya. Cara memperbaruinya tanpa henti layanan ada di bagian "Pemulihan dan keadaan darurat" di bawah.
 - Ganti `OAUTH2_COOKIE_SECRET` akan membuat semua pengguna login ulang.
 - Image `oauth2-proxy` ikut dalam rutinitas pembaruan (versi dipin di `docker-compose.sso.yml`).
 - Jika `TRUST_PROXY` salah (jumlah proxy di depan API), laporan mencatat IP proxy, bukan IP pengguna.
@@ -216,6 +216,51 @@ docker compose --env-file .env.sso -f docker-compose.yml -f docker-compose.sso.y
 | Berputar kembali ke halaman login | Cookie `Secure` tidak tersimpan karena situs diakses lewat `http://`; gunakan HTTPS |
 | `AADSTS50105` (pengguna tidak ditugaskan) | Pengguna belum ditambahkan di *Users and groups* pada Enterprise Application |
 | 502 dari nginx | Container `server` atau `oauth2-proxy` belum jalan; cek `docker compose ... logs` |
+
+### Pemulihan dan keadaan darurat
+
+**Tidak ada akun admin lokal, dan itu disengaja.** Akun dengan kata sandi bawaan adalah celah klasik, dan jalur login kedua di luar Entra tidak punya MFA maupun kebijakan akun dari Entra. Konsekuensinya: jika Entra atau oauth2-proxy tidak bisa dipakai, **semua orang terkunci**, termasuk dari alat PDF. Jalur daruratnya adalah prosedur di bawah ini.
+
+#### Pengingat kedaluwarsa client secret
+Client secret Entra berlaku maksimum 24 bulan. Saat lewat, login berhenti tanpa pemberitahuan. Tiga lapis pengamannya:
+1. Isi `ENTRA_SECRET_EXPIRES=YYYY-MM-DD` di `.env.sso`. Tanggalnya ada di Entra: *App registrations*, aplikasinya, *Certificates & secrets*, kolom *Expires*. Admin di `REPORT_ADMINS` akan melihat banner kuning di aplikasi **30 hari** sebelum tanggal itu (merah bila sudah lewat), dan server mencatat peringatan saat start: `docker compose --env-file .env.sso -f docker-compose.yml -f docker-compose.sso.yml logs server | grep -i secret`.
+2. Pasang pengingat kalender sekitar **60 hari** sebelum tanggal itu untuk tim yang bertanggung jawab. Banner hanya terlihat oleh admin yang masih bisa login, jadi ini cadangannya.
+3. Setiap kali secret diperbarui, ubah juga `ENTRA_SECRET_EXPIRES`.
+
+#### Memperbarui secret tanpa henti layanan
+Entra mengizinkan beberapa secret aktif sekaligus, jadi urutannya aman:
+1. Di Entra: *Certificates & secrets, New client secret*. Salin **Value** dan catat tanggal kedaluwarsanya.
+2. Di VM, ubah `ENTRA_CLIENT_SECRET` dan `ENTRA_SECRET_EXPIRES` di `.env.sso`.
+3. Terapkan (hanya container `oauth2-proxy` dan `server` yang dibuat ulang):
+   ```bash
+   docker compose --env-file .env.sso -f docker-compose.yml -f docker-compose.sso.yml up -d
+   ```
+4. Uji login di jendela privat.
+5. Setelah berhasil, **hapus secret lama** di Entra.
+
+#### Jika login gagal total
+Lihat log: `docker compose --env-file .env.sso -f docker-compose.yml -f docker-compose.sso.yml logs --tail=50 oauth2-proxy`. Secret yang kedaluwarsa biasanya muncul sebagai kode `AADSTS7000222`.
+
+| Situasi | Tindakan |
+|---------|----------|
+| Secret kedaluwarsa | Ganti secret dengan prosedur di atas; login pulih setelah container dibuat ulang |
+| Microsoft Entra sedang gangguan | Tunggu dan cek status layanan Microsoft. Bila layanan harus tetap jalan, gunakan mode darurat di bawah (perlu persetujuan InfoSec) |
+| `PUBLIC_HOST` atau redirect URI berubah | Samakan nilai di Entra dan `.env.sso` (kode `AADSTS50011`) |
+| Tidak ada yang bisa membuka tab Laporan | Periksa `REPORT_ADMINS` (UPN persis, huruf besar-kecil tidak berpengaruh) dan baris `WARNING` di log `server`. Atau baca datanya langsung, lihat di bawah |
+| Volume log rusak | `docker compose ... down`, `docker volume rm <nama-proyek>_audit-data` (nama persisnya lihat `docker volume ls`), lalu `up -d`. Log baru mulai dari nol; data 45 hari sebelumnya hilang |
+
+#### Mode darurat tanpa login (sementara)
+Hanya bila alat PDF harus tetap jalan dan Entra tidak bisa diperbaiki segera:
+```bash
+docker compose -f docker-compose.yml up -d --remove-orphans
+```
+Perintah ini kembali ke deployment default: `oauth2-proxy` dihapus, nginx dan API berjalan tanpa login. Data di volume `audit-data` tetap ada. **Selama mode ini, siapa pun yang bisa menjangkau alamat internal dapat memakai alat, tidak ada identitas, tidak ada log baru, dan tab Laporan tertutup.** Minta persetujuan InfoSec, batasi waktunya, dan catat. Untuk kembali ke SSO, jalankan lagi perintah `up -d` SSO biasa.
+
+#### Membaca log tanpa tab Laporan
+Saat mode SSO berjalan, 20 aktivitas terbaru bisa dibaca langsung dari database (hanya-baca, tidak mengubah apa pun):
+```bash
+docker compose --env-file .env.sso -f docker-compose.yml -f docker-compose.sso.yml exec server node -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('/data/audit.db',{readOnly:true});console.table(db.prepare('SELECT ts,user_email,action,success FROM audit_log ORDER BY id DESC LIMIT 20').all())"
+```
 
 ## Privasi data
 

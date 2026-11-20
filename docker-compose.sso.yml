@@ -61,6 +61,8 @@ services:
       AUDIT_DB_PATH: /data/audit.db
       AUDIT_RETENTION_DAYS: "45"
       REPORT_ADMINS: ${REPORT_ADMINS:-}
+      # Only used to warn admins before the Entra client secret expires.
+      ENTRA_SECRET_EXPIRES: ${ENTRA_SECRET_EXPIRES:-}
       # Number of reverse proxies in front of the API: nginx (1) plus the
       # company TLS proxy (1). Lower it if the TLS proxy is not a separate hop.
       TRUST_PROXY: ${TRUST_PROXY:-2}

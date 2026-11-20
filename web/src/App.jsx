@@ -137,6 +137,20 @@ export default function App() {
         </div>
       </header>
 
+      {/* Sent by the server to report admins only, within 30 days of expiry. */}
+      {me?.secretExpiry && me.secretExpiry.daysLeft <= 30 && (
+        <div
+          role="alert"
+          className={`mb-6 rounded-lg px-4 py-3 text-sm ${
+            me.secretExpiry.daysLeft < 0 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"
+          }`}
+        >
+          {me.secretExpiry.daysLeft < 0
+            ? t("app.secretExpired", { date: me.secretExpiry.date })
+            : t("app.secretExpiring", { days: me.secretExpiry.daysLeft, date: me.secretExpiry.date })}
+        </div>
+      )}
+
       <nav className="mb-6 flex flex-wrap gap-2 rounded-xl bg-slate-100 p-1">
         {tabs.map((tab) => (
           <button

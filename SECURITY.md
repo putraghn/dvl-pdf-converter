@@ -294,17 +294,19 @@ Browser ─HTTPS─► proxy TLS perusahaan ─► nginx ──auth_request─�
 1. **Kepercayaan pada header identitas.** API percaya header dari nginx karena terisolasi jaringan. Jika container lain di jaringan `backend` dikompromikan, identitas bisa dipalsukan. Mitigasi: hanya `web` dan `server` yang ada di jaringan itu.
 2. **Log ini untuk laporan pemakaian, bukan bukti audit yang tahan manipulasi.** Admin VM dapat mengubah berkas SQLite, dan karena fail-open mungkin ada baris yang tidak tercatat. Untuk kebutuhan forensik/compliance, kirim ke SIEM.
 3. **Identitas = UPN** dari klaim `preferred_username`. UPN dapat berubah bila akun diganti nama; dengan retensi 45 hari dampaknya kecil.
-4. **Client secret Entra kedaluwarsa** (maksimum 24 bulan). Bila lewat, login berhenti. Catat tanggalnya dan perbarui sebelum itu.
+4. **Client secret Entra kedaluwarsa** (maksimum 24 bulan). Bila lewat, login semua orang berhenti. Aplikasi memperingatkan admin laporan di antarmuka dan di log server 30 hari sebelum tanggal yang diisi di `ENTRA_SECRET_EXPIRES`; peringatan ini hanya tampil bagi admin dan tidak memengaruhi proses login. Prosedur pembaruan tanpa henti layanan ada di README ("Pemulihan dan keadaan darurat").
 5. **Daftar `REPORT_ADMINS` dikelola manual** di berkas `.env.sso`.
 6. **Log berisi data pribadi karyawan** (UPN, IP, riwayat aktivitas). Informasikan ke pengguna dan sesuaikan dengan kebijakan internal.
 7. **Log tidak dicadangkan otomatis.** Data hanya 45 hari; cadangkan volume `audit-data` bila perlu.
+8. **Tidak ada akun admin lokal atau jalur masuk darurat bawaan (disengaja).** Hal ini menghindari kredensial bawaan dan jalur autentikasi kedua tanpa MFA, tetapi berarti kegagalan Entra atau oauth2-proxy mengunci semua orang. Pemulihan bersifat operasional: pembaruan secret, atau mode sementara tanpa login (`docker compose -f docker-compose.yml up -d --remove-orphans`) yang membuka alat bagi siapa pun di jaringan internal dan karenanya perlu persetujuan InfoSec serta dibatasi waktunya. Rinciannya di README.
 
 ### 10.4 Status pengujian
 
-Diuji otomatis di lingkungan pengembangan (nginx 1.27.5, oauth2-proxy v7.15.5 asli, Edge headless, Node 24):
+Diuji otomatis di lingkungan pengembangan (nginx 1.27.5, oauth2-proxy v7.15.5 asli, Edge headless, Node 24). Konfigurasi nginx juga diuji ulang pada **nginx 1.30.6** (cabang stable yang dipakai image `nginx:stable-alpine`): 27 pemeriksaan lolos untuk `nginx.conf` dan `nginx.sso.conf` (header keamanan tepat satu kali, tanpa versi di header `Server`, alihan login, 401 JSON, dan header identitas palsu ditimpa).
 
 - **Backend** (61 pemeriksaan): identitas wajib, header palsu diabaikan di mode default, akses laporan, isi log, filter, pagination, ekspor CSV, tidak ada nama file/password di database, retensi 45 hari, dan kegagalan tulis tidak melempar error.
 - **Rantai nginx → oauth2-proxy → API** (29 pemeriksaan): alihan login, `401` JSON untuk API, header identitas palsu ditimpa, dan atribusi aktivitas ke orang yang benar. Bagian "belum login" diuji dengan oauth2-proxy asli; bagian "sudah login" memakai **penyedia sesi tiruan** karena butuh akun Entra.
 - **Browser** (13 pemeriksaan): halaman tampil di bawah CSP ketat tanpa pelanggaran, tab Laporan hanya untuk admin, pergantian bahasa.
+- **Pengingat kedaluwarsa client secret** (27 pemeriksaan backend dan 10 pemeriksaan browser): format tanggal, hitungan sisa hari, peringatan di log saat start, informasi hanya dikirim ke admin (pengguna biasa tidak menerimanya), serta banner kuning/merah dan terjemahannya.
 
 **Belum diuji**: login sungguhan dengan tenant Entra (butuh App Registration dan nama host HTTPS), build dan jaringan `internal` di Docker, dan perilaku di belakang proxy TLS perusahaan. Lakukan uji penerimaan di VM sebelum dipakai (lihat README).

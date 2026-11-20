@@ -56,7 +56,22 @@ export const config = {
 
   // Where the "sign out" link in the UI points (served by oauth2-proxy).
   logoutUrl: process.env.SSO_LOGOUT_URL || "/oauth2/sign_out",
+
+  // Date the Entra client secret expires (YYYY-MM-DD). It plays no part in
+  // login; it only lets the app warn report admins (and the log) in time,
+  // because an expired secret silently stops every login.
+  ...parseSecretExpiry(process.env.ENTRA_SECRET_EXPIRES),
 };
+
+function parseSecretExpiry(raw) {
+  const v = (raw || "").trim();
+  if (!v) return { entraSecretExpires: "", entraSecretExpiresInvalid: false };
+  const valid =
+    /^\d{4}-\d{2}-\d{2}$/.test(v) &&
+    !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) &&
+    new Date(`${v}T00:00:00Z`).toISOString().startsWith(v); // rejects e.g. 2028-02-31
+  return { entraSecretExpires: valid ? v : "", entraSecretExpiresInvalid: !valid };
+}
 
 /** Parses a positive number from an env string; falls back to `fallback` if unset/invalid. */
 function positiveNumber(raw, fallback) {

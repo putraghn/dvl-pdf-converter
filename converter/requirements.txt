@@ -1,0 +1,4 @@
+# Pinned: pdf2docx is only tested against specific PyMuPDF releases.
+# PyMuPDF is AGPL-3.0 (or commercial from Artifex); see SECURITY.md.
+pdf2docx==0.5.13
+PyMuPDF==2.2

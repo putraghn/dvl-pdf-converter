@@ -519,4 +519,57 @@ router.post("/protect", upload.single("file"), async (req, res, next) => {
   }
 });
 
+// ── POST /api/pdf/to-word ────────────────────────────────
+// Text-based PDF -> .docx. The work is done by the separate "converter"
+// container (pdf2docx); this route validates the upload and relays it. Scanned
+// (image-only) PDFs have no text to extract and are not supported.
+const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+router.post("/to-word", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Upload a PDF file." });
+    if (!config.converterUrl) {
+      return res.status(503).json({ error: "PDF to Word is not enabled on this server." });
+    }
+    const src = await loadPdf(req.file.buffer, req.file.originalname);
+    const pages = src.getPageCount();
+    if (pages > config.wordMaxPages) {
+      return res.status(400).json({
+        error: `Document has ${pages} pages. PDF to Word accepts at most ${config.wordMaxPages} pages; split it first.`,
+      });
+    }
+    let upstream;
+    try {
+      upstream = await fetch(`${config.converterUrl}/convert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/pdf" },
+        body: req.file.buffer,
+        signal: AbortSignal.timeout(config.wordTimeoutMs),
+      });
+    } catch (err) {
+      const timedOut = err?.name === "TimeoutError" || err?.name === "AbortError";
+      return res.status(timedOut ? 504 : 503).json({
+        error: timedOut ? "Conversion took too long." : "The converter is unavailable. Try again later.",
+      });
+    }
+    if (!upstream.ok) {
+      let message = "This PDF could not be converted to Word.";
+      try {
+        const body = await upstream.json();
+        if (body?.error) message = String(body.error);
+      } catch {
+        /* non-JSON error body */
+      }
+      // Pass through the converter's client-side answers; anything else is a gateway failure.
+      const status = [400, 413, 422, 503, 504].includes(upstream.status) ? upstream.status : 502;
+      return res.status(status).json({ error: message });
+    }
+    const docx = Buffer.from(await upstream.arrayBuffer());
+    const base = req.file.originalname.replace(/\.pdf$/i, "");
+    res.setHeader("Content-Type", DOCX_TYPE);
+    res.setHeader("Content-Disposition", contentDisposition(`${base}.docx`));
+    res.send(docx);
+  } catch (err) {
+    next(err);
+  }
+});
 export default router;

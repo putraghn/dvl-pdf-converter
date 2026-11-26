@@ -21,6 +21,9 @@ services:
       GS_TIMEOUT_SEC: "60"
       GS_MAX_CONCURRENT: "2"
       GS_MAX_QUEUE: "5"
+      # PDF -> Word is done by the "converter" service below (backend network only).
+      CONVERTER_URL: "http://converter:5000"
+      WORD_MAX_PAGES: "100"
     restart: unless-stopped
     # Reap zombie Ghostscript child processes and forward signals cleanly.
     init: true
@@ -63,6 +66,41 @@ services:
     tmpfs:
       - /tmp:size=512m,mode=1777
 
+  # PDF -> Word (pdf2docx). Same isolation as the API: internal network only,
+  # no published port, read-only root filesystem, no capabilities, size limits.
+  converter:
+    build: ./converter
+    environment:
+      MAX_FILE_MB: "50"
+      # A conversion is killed after this many seconds; one runs at a time.
+      CONVERT_TIMEOUT_SEC: "120"
+      MAX_CONCURRENT: "1"
+      TMPDIR: "/tmp"
+    restart: unless-stopped
+    init: true
+    networks:
+      - backend
+    expose:
+      - "5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+          pids: 128
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
   web:
     build: ./web
     depends_on:

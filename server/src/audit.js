@@ -11,7 +11,7 @@ import { config } from "./config.js";
  * passwords. Failing to write a row never fails the user's request.
  */
 
-export const ACTIONS = ["merge", "split", "compress", "to_images", "from_images", "protect"];
+export const ACTIONS = ["merge", "split", "compress", "to_images", "from_images", "protect", "to_word"];
 
 const ROUTE_ACTIONS = {
   "/merge": "merge",
@@ -20,6 +20,7 @@ const ROUTE_ACTIONS = {
   "/to-images": "to_images",
   "/from-images": "from_images",
   "/protect": "protect",
+  "/to-word": "to_word",
 };
 
 let db = null;

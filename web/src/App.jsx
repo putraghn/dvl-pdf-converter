@@ -7,6 +7,7 @@ import CompressPanel from "./components/CompressPanel.jsx";
 import ToImagesPanel from "./components/ToImagesPanel.jsx";
 import FromImagesPanel from "./components/FromImagesPanel.jsx";
 import ProtectPanel from "./components/ProtectPanel.jsx";
+import ToWordPanel from "./components/ToWordPanel.jsx";
 import { useT } from "./i18n.jsx";
 
 const TABS = [
@@ -33,6 +34,12 @@ const TABS = [
     labelKey: "tab.toImages",
     icon: "M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5zm2 12 4-5 3 3 2-2 3 4",
     Panel: ToImagesPanel,
+  },
+  {
+    id: "to-word",
+    labelKey: "tab.toWord",
+    icon: "M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm7 1.5V9h4.5M8 13l1.5 5 1.5-4 1.5 4 1.5-5",
+    Panel: ToWordPanel,
   },
   {
     id: "from-images",

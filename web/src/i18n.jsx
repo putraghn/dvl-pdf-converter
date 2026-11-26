@@ -17,6 +17,15 @@ const translations = {
     "tab.toImages": "PDF → JPG",
     "tab.fromImages": "Gambar → PDF",
     "tab.protect": "Proteksi",
+    "tab.toWord": "PDF → Word",
+    "toWord.desc":
+      "Ubah PDF berbasis teks menjadi dokumen Word (.docx) yang bisa diedit.",
+    "toWord.note":
+      "Hasil perlu diperiksa: tata letak, font, dan tabel kompleks bisa bergeser. PDF hasil scan (berupa gambar) tidak didukung.",
+    "toWord.pickOne": "Pilih satu file PDF.",
+    "toWord.working": "Mengonversi...",
+    "toWord.success": "Selesai. File Word sudah diunduh.",
+    "toWord.button": "Konversi ke Word",
 
     "common.processing": "Memproses...",
     "common.remove": "Hapus",
@@ -153,6 +162,15 @@ const translations = {
     "tab.toImages": "PDF → JPG",
     "tab.fromImages": "Images → PDF",
     "tab.protect": "Protect",
+    "tab.toWord": "PDF → Word",
+    "toWord.desc":
+      "Convert a text-based PDF into an editable Word document (.docx).",
+    "toWord.note":
+      "Check the result: layout, fonts and complex tables may shift. Scanned (image-only) PDFs are not supported.",
+    "toWord.pickOne": "Select one PDF file.",
+    "toWord.working": "Converting...",
+    "toWord.success": "Done. The Word file has been downloaded.",
+    "toWord.button": "Convert to Word",
 
     "common.processing": "Processing...",
     "common.remove": "Remove",

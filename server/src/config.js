@@ -22,6 +22,14 @@ export const config = {
   gsMaxConcurrent: Math.floor(positiveNumber(process.env.GS_MAX_CONCURRENT, 2)),
   gsMaxQueue: Math.floor(positiveNumber(process.env.GS_MAX_QUEUE, 5)),
 
+  // PDF -> Word runs in a separate "converter" container (Python, pdf2docx).
+  // Empty CONVERTER_URL = feature disabled (the endpoint answers 503).
+  //  - WORD_MAX_PAGES: larger documents are refused up front (default 100).
+  //  - WORD_TIMEOUT_SEC: how long to wait for the converter (default 130 s, a
+  //    little above the converter's own 120 s limit, so its answer arrives first).
+  converterUrl: (process.env.CONVERTER_URL || "").replace(/\/+$/, ""),
+  wordMaxPages: Math.floor(positiveNumber(process.env.WORD_MAX_PAGES, 100)),
+  wordTimeoutMs: Math.round(positiveNumber(process.env.WORD_TIMEOUT_SEC, 130) * 1000),
   // Express "trust proxy" setting — controls how the client IP is derived from
   // X-Forwarded-For, which rate limiting relies on. Leave unset (default) when
   // the app is directly exposed. Behind N trusted reverse proxies, set

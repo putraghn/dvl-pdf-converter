@@ -12,6 +12,7 @@ const ACTION_LABEL = {
   to_images: "tab.toImages",
   from_images: "tab.fromImages",
   protect: "tab.protect",
+  to_word: "tab.toWord",
 };
 
 /** "nano.pamungkas@darya-varia.com" -> "nano.pamungkas" (the full email stays in tooltips, filters and CSV). */

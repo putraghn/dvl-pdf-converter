@@ -2,7 +2,7 @@
 
 Dokumen ini untuk tim Information Security sebagai dasar security review / assessment aplikasi **PDF Tools Internal**. Berisi arsitektur, alur data, kontrol keamanan yang sudah diterapkan, batasan yang diketahui, dan checklist pengujian.
 
-> Ringkasan: aplikasi internal untuk mengelola PDF (merge, split, compress, PDF→JPG, gambar→PDF, proteksi password). Isi file tidak pernah disimpan. Dimaksudkan **hanya untuk jaringan internal**. Ada dua cara menjalankannya: **(a) default, tanpa login** (`docker-compose.yml`), dan **(b) dengan SSO Microsoft Entra dan laporan aktivitas** (`docker-compose.sso.yml`, lihat §10). Mode (b) menutup batasan "tanpa autentikasi", tetapi menyimpan metadata aktivitas pengguna selama 45 hari.
+> Ringkasan: aplikasi internal untuk mengelola PDF (merge, split, compress, PDF→JPG, gambar→PDF, proteksi password, PDF→Word). Isi file tidak pernah disimpan. Dimaksudkan **hanya untuk jaringan internal**. Ada dua cara menjalankannya: **(a) default, tanpa login** (`docker-compose.yml`), dan **(b) dengan SSO Microsoft Entra dan laporan aktivitas** (`docker-compose.sso.yml`, lihat §10). Mode (b) menutup batasan "tanpa autentikasi", tetapi menyimpan metadata aktivitas pengguna selama 45 hari.
 
 ---
 
@@ -15,7 +15,8 @@ Browser (SPA React, file statis)
 nginx (container "web")  ──proxy /api/*──►  Express API (container "server")
                                                ├─ pdf-lib     : merge, split, gambar→PDF (murni JS, in-memory)
                                                ├─ Ghostscript : compress, PDF→JPG (child process)
-                                               └─ archiver    : ZIP untuk PDF→JPG multi-halaman
+                                               ├─ archiver    : ZIP untuk PDF→JPG multi-halaman
+                                               └─ HTTP internal ─► container "converter" (Python + pdf2docx) : PDF→Word
 ```
 
 | Komponen   | Teknologi                         | Catatan                                             |
@@ -23,6 +24,7 @@ nginx (container "web")  ──proxy /api/*──►  Express API (container "se
 | Frontend   | React + Vite (di-build statis)    | Disajikan nginx. Tidak ada Node runtime di produksi |
 | Backend    | Node.js 20 + Express              | Satu-satunya layanan dengan logika server           |
 | Konversi   | Ghostscript (dari image Debian)   | Dipanggil via `spawn`, bukan shell                  |
+| PDF→Word   | Python 3.13 + pdf2docx/PyMuPDF    | Container `converter` terpisah, jaringan internal   |
 | Runtime    | Docker (Linux)                    | Backend berjalan sebagai user non-root `node`       |
 
 ---
@@ -90,6 +92,7 @@ Endpoint publik (semua di balik rate limiter):
 | POST   | `/api/pdf/to-images`    | 1 PDF + `dpi` (angka)                   |
 | POST   | `/api/pdf/from-images`  | ≥1 gambar JPG/PNG                       |
 | POST   | `/api/pdf/protect`      | 1 PDF + `password` (string)             |
+| POST   | `/api/pdf/to-word`      | 1 PDF (berbasis teks)                   |
 
 Titik paling sensitif = pemrosesan Ghostscript (parser dokumen native). Dimitigasi dengan `-dSAFER`, pemanggilan tanpa shell, dan isolasi container.
 
@@ -103,7 +106,9 @@ Titik paling sensitif = pemrosesan Ghostscript (parser dokumen native). Dimitiga
 2. **Ghostscript memproses dokumen tidak tepercaya — risiko residual tertinggi.** Parser dokumen ini secara historis berulang kali punya kerentanan, termasuk bypass sandbox `-dSAFER` (mis. CVE-2026-101258: dokumen PostScript/EPS buatan dapat mengeksekusi perintah shell meski `-dSAFER` aktif; Red Hat menyatakan belum ada mitigasi selain patch). Lapisan pertahanan yang diterapkan: (a) versi Ghostscript yang sudah diperbaiki (base image Debian trixie); (b) hanya file berheader `%PDF-` di byte 0 yang boleh sampai ke Ghostscript, sehingga interpreter PostScript tidak terjangkau lewat endpoint; (c) `-dSAFER`; (d) timeout dan batas konkurensi; (e) container non-root, `read_only`, `cap_drop: ALL`, `no-new-privileges`; (f) jaringan `internal` tanpa akses keluar. Risiko tidak bisa nol: kerentanan baru di parser PDF bisa muncul kapan saja, karena itu **rebuild image berkala dan pantau advisory Ghostscript/Debian** tetap wajib. Catatan: cek header hanya memastikan *jenis* file; tidak menjamin isi PDF aman bagi parser.
 3. **Potensi DoS lewat file besar/kompleks.** Dibatasi ukuran file, jumlah file, dan rate limit. Selain itu, `docker-compose.yml` kini menerapkan **resource limits** per container (server: 1 CPU / 768 MB / 256 PID; web: 0.5 CPU / 128 MB), `--no-new-privileges`, `cap_drop: ALL`, dan root filesystem `read_only` dengan tmpfs khusus untuk file temp. File PDF yang sangat kompleks tetap bisa memakan CPU dalam batas tersebut.
 4. **Rate limit per-IP.** `trust proxy` dapat dikonfigurasi via `TRUST_PROXY` (default: tidak percaya proxy; `docker compose` memakai `1` untuk nginx di depan). Penting: setel sesuai jumlah hop proxy nyata — nilai terlalu permisif (`true`) memungkinkan pemalsuan IP lewat `X-Forwarded-For` untuk melewati rate limit. nginx meneruskan IP klien via `X-Forwarded-For`.
-5. **Logging metadata.** `morgan` mencatat method/path/status/ukuran/durasi — **tanpa** isi atau nama file. Bisa dimatikan bila kebijakan menghendaki.
+5. **PDF → Word (service `converter`).** Parser PDF kedua (PyMuPDF/MuPDF, native) memproses dokumen yang tidak tepercaya. Mitigasi: hanya file berheader `%PDF-` yang diteruskan dan dibuka dulu oleh `pdf-lib` di API (maks. `WORD_MAX_PAGES` halaman); konversi berjalan di proses anak yang dihentikan setelah `CONVERT_TIMEOUT_SEC`, satu konversi pada satu waktu; container non-root, `read_only`, `cap_drop: ALL`, `no-new-privileges`, batas 1 CPU / 1 GB / 128 PID, tmpfs `/tmp`, hanya di jaringan `backend` (tanpa akses keluar dan tanpa port publik). Hanya mendukung PDF berbasis teks; hasil perlu diperiksa karena tata letak bisa bergeser.
+6. **Lisensi PyMuPDF.** pdf2docx bergantung pada PyMuPDF, berlisensi **AGPL-3.0** (atau lisensi komersial berbayar dari Artifex). Untuk pemakaian internal oleh karyawan perusahaan sendiri tanpa distribusi ke pihak luar, AGPL umumnya tidak menimbulkan kewajiban tambahan, namun tafsirnya perlu dikonfirmasi ke legal/compliance sebelum produksi. Jika tidak dapat diterima, matikan fitur (hapus service `converter` dan `CONVERTER_URL`) atau beli lisensi komersial.
+7. **Logging metadata.** `morgan` mencatat method/path/status/ukuran/durasi — **tanpa** isi atau nama file. Bisa dimatikan bila kebijakan menghendaki.
 
 ---
 

@@ -8,6 +8,7 @@ Website internal untuk mengelola file PDF:
 - **PDF → JPG** — ubah tiap halaman jadi gambar (banyak halaman dikemas ZIP)
 - **Gambar → PDF** — gabung JPG/PNG jadi satu PDF
 - **Proteksi (protect)** — tambah password agar PDF hanya bisa dibuka dengan password
+- **PDF → Word** — ubah PDF berbasis teks menjadi `.docx` yang bisa diedit (PDF hasil scan/gambar tidak didukung; tata letak dan tabel kompleks bisa bergeser)
 
 Secara default tanpa login, untuk pemakaian di jaringan internal perusahaan. Opsional: **login SSO Microsoft Entra dan laporan aktivitas** (lihat bagian "Login SSO dan laporan aktivitas"). File diproses di server dan isinya tidak disimpan.
 
@@ -24,6 +25,7 @@ nginx (web)  ──proxy /api──►  Express API (server)
 ```
 
 - **server/** — Express API. Merge & split pakai `pdf-lib`; compress pakai Ghostscript.
+- **converter/** — Service Python kecil (pdf2docx) khusus PDF → Word. Berjalan di container terpisah pada jaringan `backend` (internal, tanpa port publik), dengan batas waktu dan memori. Catatan lisensi: pdf2docx memakai PyMuPDF (AGPL-3.0, atau lisensi komersial Artifex), lihat `SECURITY.md`.
 - **web/** — Frontend React. Di-build jadi file statis, disajikan nginx, dan nginx mem-proxy `/api` ke backend.
 
 ## Menjalankan dengan Docker (rekomendasi)
@@ -141,11 +143,13 @@ Web berjalan di http://localhost:5173 (memanggil API di `VITE_API_BASE`).
 | POST   | `/api/pdf/to-images`  | `file` (PDF), `dpi` 72–300 (default 150)    | Tiap halaman → JPG. 1 halaman = JPG, >1 = ZIP    |
 | POST   | `/api/pdf/from-images`| `files` (≥1 JPG/PNG)                        | Gabung gambar jadi satu PDF (1 gambar/halaman)   |
 | POST   | `/api/pdf/protect`    | `file` (PDF), `password`                    | Tambah user password (enkripsi via Ghostscript)  |
+| POST   | `/api/pdf/to-word`    | `file` (PDF berbasis teks)                  | Konversi ke `.docx` (service `converter`)        |
 | GET    | `/health`             | —                                           | Health check                                     |
 
 Respons saat sukses:
 - `merge`, `split`, `compress`, `from-images` → `application/pdf`
 - `to-images` → `image/jpeg` (1 halaman) atau `application/zip` (banyak halaman)
+- `to-word` → `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (`.docx`)
 
 Saat gagal, semua endpoint mengembalikan JSON `{ "error": "..." }`.
 
@@ -158,6 +162,8 @@ Lihat `server/.env.example` dan `web/.env.example`. Yang umum diubah:
 - `TRUST_PROXY` — cara backend menentukan IP klien (dipakai rate limiting) di balik reverse proxy. Kosong/`false` = tidak percaya proxy (saat diekspos langsung). Angka `N` = jumlah hop proxy tepercaya di depan (set `1` untuk satu nginx/LB). Pada `docker compose`, sudah diset `1` karena backend ada di belakang container `web`. Jangan pakai `true` (bisa dipalsukan lewat `X-Forwarded-For`).
 - `GS_TIMEOUT_SEC` — batas waktu satu proses Ghostscript sebelum dihentikan paksa (default 60 detik; jawaban 422 bila terlampaui).
 - `GS_MAX_CONCURRENT` — jumlah proses Ghostscript yang boleh berjalan bersamaan (default 2).
+- `CONVERTER_URL` — alamat service PDF → Word (di Docker: `http://converter:5000`). Kosong = fitur nonaktif (jawaban 503).
+- `WORD_MAX_PAGES` — batas halaman untuk PDF → Word (default 100). Konversi dihentikan setelah `CONVERT_TIMEOUT_SEC` (default 120 detik, diatur di service `converter`).
 - `GS_MAX_QUEUE` — jumlah permintaan yang boleh menunggu giliran (default 5). Permintaan di antrean menyimpan file unggahannya di memori, jadi jaga angkanya kecil dibanding RAM container. Kelebihannya dijawab 503.
 
 ## Login SSO dan laporan aktivitas (opsional)
@@ -275,6 +281,7 @@ Cara penanganan tiap fitur:
 | Gambar → PDF   | Tidak — di RAM   | Otomatis saat request selesai              |
 | Kompres        | File temp sesaat | Dihapus di blok `finally` (apa pun hasilnya) |
 | PDF → JPG      | File temp sesaat | Dihapus setelah file selesai dikirim       |
+| PDF → Word     | File temp sesaat (container `converter`, tmpfs) | Dihapus otomatis begitu konversi selesai |
 
 Detail teknis:
 
